@@ -9,5 +9,5 @@
 coverage-html/
 docs/
 ipch
-path-oram/bin/*
-!path-oram/bin/.gitkeep
+b-plus-tree/bin/*
+!b-plus-tree/bin/.gitkeep

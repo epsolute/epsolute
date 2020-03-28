@@ -8,21 +8,21 @@ ODIR=obj
 LDIR=lib
 BDIR=bin
 
-LDFLAGS=-L $(LDIR) -L /usr/local/opt/openssl/lib
-LDLIBS=-l boost_system -l ssl -l crypto # libs for main code
+LDFLAGS=-L $(LDIR)
+LDLIBS=-l boost_system # libs for main code
 LDTESTLIBS=-l gtest -l pthread -l benchmark # libs for tests and benchmarks
-INCLUDES=-I $(IDIR) -I /usr/local/opt/openssl/include
+INCLUDES=-I $(IDIR)
 CPPFLAGS= --std=c++17 -Wall -Wno-unknown-pragmas -fPIC
 CC=g++
 RM=rm -rf
 
-LIBNAME=pathoram
+LIBNAME=bplustree
 
 # if you follow the convention that for each class CLASS you have a header in
 # $(IDIR)/CLASS.hpp, a code in $(SDIR)/CLASS.cpp and a test in $(TDIR)/test-CLASS.cpp,
 # then the rest will magically work - it will compile each class and test and will run the tests.
 # CLASS does not even have to be a class in C++.
-ENTITIES = storage-adapter position-map-adapter utility oram stash-adapter
+ENTITIES = storage-adapter utility
 
 # dependencies - definitions plus header files
 _DEPS = definitions.h $(addsuffix .hpp, $(ENTITIES))
@@ -34,7 +34,7 @@ OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 TESTS = $(ENTITIES)
 TESTBIN = $(addprefix $(BDIR)/test-, $(TESTS))
 
-BENCHMARKS = storage-adapter oram utility
+BENCHMARKS = # TODO
 BENCHMARKSBIN = $(addprefix $(BDIR)/benchmark-, $(BENCHMARKS))
 
 INTEGRATION = oram-big
@@ -82,7 +82,7 @@ $(ODIR)/%.o: $(SDIR)/%.cpp $(DEPS)
 
 # some Linuxes do not respect -L flag during execution, so we can modify the system LD path
 ldconfig:
-	echo $(shell pwd)/bin > /etc/ld.so.conf.d/pathoram-dev.conf
+	echo $(shell pwd)/bin > /etc/ld.so.conf.d/$(LIBNAME)-dev.conf
 	ldconfig
 
 # will compile the test against the library (not objects and sources) and will run it
