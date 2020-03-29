@@ -6,7 +6,7 @@
 		"command": "make cleandebug",
 		"args": [],
 		"options": {
-			"cwd": "${workspaceFolder}/path-oram"
+			"cwd": "${workspaceFolder}/b-plus-tree"
 		},
 		"group": {
 			"kind": "build",

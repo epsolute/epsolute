@@ -15,8 +15,13 @@ namespace BPlusTree
 		virtual void set(number location, bytes data) = 0;
 		virtual number malloc()						  = 0;
 
+		virtual number start() = 0;
+		virtual number empty() = 0;
+
 		AbsStorageAdapter(number blockSize);
 		virtual ~AbsStorageAdapter() = 0;
+
+		number getBlockSize();
 
 		protected:
 		number blockSize;
@@ -26,7 +31,10 @@ namespace BPlusTree
 	{
 		private:
 		map<number, bytes> memory;
-		number locationCounter = 0;
+		number locationCounter = ROOT;
+
+		static inline const number EMPTY = 0;
+		static inline const number ROOT  = 1;
 
 		void checkLocation(number location);
 
@@ -37,5 +45,8 @@ namespace BPlusTree
 		bytes get(number location) final;
 		void set(number location, bytes data) final;
 		number malloc() final;
+
+		number start() final; // TODO test
+		number empty() final; // TODO test
 	};
 }

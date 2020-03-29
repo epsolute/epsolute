@@ -16,6 +16,11 @@ namespace BPlusTree
 	{
 	}
 
+	number AbsStorageAdapter::getBlockSize()
+	{
+		return blockSize;
+	}
+
 	InMemoryStorageAdapter::InMemoryStorageAdapter(number blockSize) :
 		AbsStorageAdapter(blockSize)
 	{
@@ -47,6 +52,16 @@ namespace BPlusTree
 	number InMemoryStorageAdapter::malloc()
 	{
 		return locationCounter++;
+	}
+
+	number InMemoryStorageAdapter::start()
+	{
+		return ROOT;
+	}
+
+	number InMemoryStorageAdapter::empty()
+	{
+		return EMPTY;
 	}
 
 	void InMemoryStorageAdapter::checkLocation(number location)
