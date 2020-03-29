@@ -63,7 +63,7 @@ namespace BPlusTree
 		tree = new Tree(storage, data);
 
 		auto current = tree->leftmostDataBlock;
-		for (int i = from; i <= to; i++)
+		for (unsigned int i = from; i <= to; i++)
 		{
 			auto [payload, next] = tree->readDataBlock(current);
 			ASSERT_EQ(size, payload.size());

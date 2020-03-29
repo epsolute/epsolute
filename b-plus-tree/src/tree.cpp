@@ -2,6 +2,7 @@
 
 #include "utility.hpp"
 
+#include <algorithm>
 #include <math.h>
 
 namespace BPlusTree
@@ -25,7 +26,7 @@ namespace BPlusTree
 		vector<pair<number, number>> layer;
 		layer.resize(data.size());
 
-		for (int i = data.size() - 1; i >= 0; i--)
+		for (unsigned int i = data.size() - 1; i >= 0; i--)
 		{
 			layer[i].first  = data[i].first;
 			layer[i].second = createDataBlock(
@@ -47,7 +48,7 @@ namespace BPlusTree
 		auto blocks = (data.size() + userBlockSize - 1) / userBlockSize;
 		vector<number> addresses;
 		addresses.resize(blocks);
-		for (int i = 0; i < blocks; i++)
+		for (unsigned int i = 0; i < blocks; i++)
 		{
 			addresses[i] = storage->malloc();
 		}
@@ -61,7 +62,7 @@ namespace BPlusTree
 			buffer.resize(userBlockSize);
 
 			auto thisSize   = bytesFromNumber(end - i * userBlockSize);
-			auto nextBlock  = bytesFromNumber(i < blocks - 1 ? addresses[i+1] : storage->empty());
+			auto nextBlock  = bytesFromNumber(i < blocks - 1 ? addresses[i + 1] : storage->empty());
 			auto nextBucket = bytesFromNumber(i < blocks - 1 ? storage->empty() : next);
 			storage->set(
 				addresses[i],
