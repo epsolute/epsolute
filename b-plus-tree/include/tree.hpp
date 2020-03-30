@@ -27,9 +27,12 @@ namespace BPlusTree
 		number createNodeBlock(vector<pair<number, number>> data);
 		vector<pair<number, number>> readNodeBlock(number address);
 
+		vector<pair<number, number>> pushLayer(vector<pair<number, number>> input);
+
 		friend class TreeTest_ReadDataLayer_Test;
 		friend class TreeTest_CreateNodeBlockTooBig_Test;
 		friend class TreeTest_CreateNodeBlock_Test;
 		friend class TreeTest_ReadNodeBlock_Test;
+		friend class TreeTest_PushLayer_Test;
 	};
 }

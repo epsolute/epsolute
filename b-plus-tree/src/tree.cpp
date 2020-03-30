@@ -13,20 +13,21 @@ namespace BPlusTree
 	Tree::Tree(AbsStorageAdapter *storage) :
 		storage(storage)
 	{
+		b = (storage->getBlockSize() - sizeof(number)) / (2 * sizeof(number));
 	}
 
-	Tree::Tree(AbsStorageAdapter *storage, vector<pair<number, bytes>> data) :
-		storage(storage)
-	{
-		b = storage->getBlockSize() / sizeof(number) - 2;
+	// TODO enable for signed
 
-		auto metaLocation = storage->malloc();
+	Tree::Tree(AbsStorageAdapter *storage, vector<pair<number, bytes>> data) :
+		Tree(storage)
+	{
+		// auto metaLocation = storage->malloc();
 
 		sort(data.begin(), data.end(), [](pair<number, bytes> a, pair<number, bytes> b) { return a.first < b.first; });
 
+		// data layer
 		vector<pair<number, number>> layer;
 		layer.resize(data.size());
-
 		for (int i = data.size() - 1; i >= 0; i--)
 		{
 			layer[i].first  = data[i].first;
@@ -34,8 +35,47 @@ namespace BPlusTree
 				data[i].second,
 				(unsigned int)i == data.size() - 1 ? storage->empty() : layer[i + 1].second);
 		}
-
 		leftmostDataBlock = layer[0].second;
+
+		// leaf layer
+		layer = pushLayer(layer);
+
+		// nodes layer
+		while (layer.size() > 1)
+		{
+			layer = pushLayer(layer);
+		}
+		root = layer[0].second;
+	}
+
+	// TODO document that number of pointers and keys is the same
+
+	vector<pair<number, number>> Tree::pushLayer(vector<pair<number, number>> input)
+	{
+		vector<pair<number, number>> layer;
+		for (unsigned int i = 0; i < input.size(); i += b)
+		{
+			vector<pair<number, number>> block;
+			block.resize(b);
+			number max = 0uLL; // TODO signed
+			for (unsigned int j = 0; j < b; j++)
+			{
+				if (i + j < input.size())
+				{
+					block[j] = input[i + j];
+					max		 = block[j].first > max ? block[j].first : max;
+				}
+				else
+				{
+					block.resize(j);
+					break;
+				}
+			}
+			auto address = createNodeBlock(block);
+			layer.push_back({max, address});
+		}
+
+		return layer;
 	}
 
 	number Tree::createNodeBlock(vector<pair<number, number>> data)

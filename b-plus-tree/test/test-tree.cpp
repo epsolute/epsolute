@@ -53,8 +53,8 @@ namespace BPlusTree
 		pairs.resize(count);
 		for (unsigned int i = 0; i < count; i++)
 		{
-			pairs[i].first  = i * 17;
-			pairs[i].second = i * 19;
+			pairs[i].first  = i;
+			pairs[i].second = i * 1000;
 		}
 
 		return {count, pairs};
@@ -128,6 +128,29 @@ namespace BPlusTree
 		auto read	= tree->readNodeBlock(address);
 
 		ASSERT_EQ(pairs, read);
+
+		delete tree;
+	}
+
+	TEST_F(TreeTest, PushLayer)
+	{
+		tree = new Tree(storage);
+
+		auto [count, pairs] = generatePairs(BLOCK_SIZE * 2);
+
+		auto pushed  = tree->pushLayer(pairs);
+		auto counter = 0;
+		for (unsigned int i = 0; i < pushed.size(); i++)
+		{
+			auto block = tree->readNodeBlock(pushed[i].second);
+			for (auto key : block)
+			{
+				EXPECT_LE(key.first, pushed[i].first);
+				EXPECT_EQ(key.first * 1000, key.second);
+				counter++;
+			}
+		}
+		EXPECT_EQ(count, counter);
 
 		delete tree;
 	}
