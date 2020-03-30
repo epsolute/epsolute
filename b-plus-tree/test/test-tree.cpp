@@ -168,7 +168,7 @@ namespace BPlusTree
 		const auto from  = 5;
 		const auto to	= 15;
 		const auto size  = 100;
-		const auto query = 10;
+		const auto query = 10uLL;
 
 		auto data = generateDataPoints(from, to, size);
 
