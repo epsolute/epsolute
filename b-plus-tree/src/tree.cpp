@@ -10,6 +10,9 @@ namespace BPlusTree
 	using namespace std;
 	using boost::format;
 
+	pair<BlockType, number> getTypeSize(number typeAndSize);
+	number setTypeSize(BlockType type, number size);
+
 	Tree::Tree(AbsStorageAdapter *storage) :
 		storage(storage)
 	{
@@ -46,6 +49,10 @@ namespace BPlusTree
 			layer = pushLayer(layer);
 		}
 		root = layer[0].second;
+	}
+
+	bytes Tree::search(number key)
+	{
 	}
 
 	// TODO document that number of pointers and keys is the same
@@ -87,7 +94,7 @@ namespace BPlusTree
 
 		number numbers[data.size() * 2 + 1];
 
-		numbers[0] = data.size() * 2 * sizeof(number);
+		numbers[0] = setTypeSize(NodeBlock, data.size() * 2 * sizeof(number));
 		for (unsigned int i = 0; i < data.size(); i++)
 		{
 			numbers[1 + 2 * i]	 = data[i].first;
@@ -102,13 +109,16 @@ namespace BPlusTree
 		return address;
 	}
 
-	vector<pair<number, number>> Tree::readNodeBlock(number address)
+	vector<pair<number, number>> Tree::readNodeBlock(bytes block)
 	{
-		auto read = storage->get(address);
-
-		auto deconstructed = deconstruct(read, {sizeof(number)});
-		auto size		   = numberFromBytes(deconstructed[0]);
+		auto deconstructed = deconstruct(block, {sizeof(number)});
+		auto [type, size]  = getTypeSize(numberFromBytes(deconstructed[0]));
 		auto blockData	 = deconstructed[1];
+
+		if (type != NodeBlock)
+		{
+			throw Exception("attempt to read a non-node block as node block");
+		}
 
 		blockData.resize(size);
 
@@ -152,10 +162,10 @@ namespace BPlusTree
 			copy(data.begin() + i * userBlockSize, data.begin() + end, back_inserter(buffer));
 			buffer.resize(userBlockSize);
 
-			auto thisSize   = end - i * userBlockSize;
-			auto nextBlock  = i < blocks - 1 ? addresses[i + 1] : storage->empty();
-			auto nextBucket = i < blocks - 1 ? storage->empty() : next;
-			auto numbers	= concatNumbers(3, thisSize, nextBlock, nextBucket);
+			auto thisTypeAndSize = setTypeSize(DataBlock, end - i * userBlockSize);
+			auto nextBlock		 = i < blocks - 1 ? addresses[i + 1] : storage->empty();
+			auto nextBucket		 = i < blocks - 1 ? storage->empty() : next;
+			auto numbers		 = concatNumbers(3, thisTypeAndSize, nextBlock, nextBucket);
 			storage->set(
 				addresses[i],
 				concat(2, &numbers, &buffer));
@@ -164,18 +174,25 @@ namespace BPlusTree
 		return addresses[0];
 	}
 
-	pair<bytes, number> Tree::readDataBlock(number address)
+	pair<bytes, number> Tree::readDataBlock(bytes block)
 	{
 		bytes data;
+		auto address = storage->empty();
 
 		while (true)
 		{
-			auto read		   = storage->get(address);
+			auto read = address == storage->empty() ? block : storage->get(address);
+
 			auto deconstructed = deconstruct(read, {3 * sizeof(number)});
 			auto numbers	   = deconstructNumbers(deconstructed[0]);
 			auto blockData	 = deconstructed[1];
 
-			auto thisSize   = numbers[0];
+			auto [type, thisSize] = getTypeSize(numbers[0]);
+			if (type != DataBlock)
+			{
+				throw Exception("attempt to read a non-data block as data block");
+			}
+
 			auto nextBlock  = numbers[1];
 			auto nextBucket = numbers[2];
 
@@ -192,5 +209,28 @@ namespace BPlusTree
 				return {data, nextBucket};
 			}
 		}
+	}
+
+	pair<BlockType, bytes> Tree::checkType(number address)
+	{
+		auto block		   = storage->get(address);
+		auto deconstructed = deconstruct(block, {sizeof(number)});
+		auto typeAndSize   = numberFromBytes(deconstructed[0]);
+		return {getTypeSize(typeAndSize).first, block};
+	}
+
+	pair<BlockType, number> getTypeSize(number typeAndSize)
+	{
+		number buffer[1]{typeAndSize};
+		auto type = ((unsigned int *)buffer)[0];
+		auto size = ((unsigned int *)buffer)[1];
+
+		return {(BlockType)type, (number)size};
+	}
+
+	number setTypeSize(BlockType type, number size)
+	{
+		unsigned int buffer[2]{type, (unsigned int)size};
+		return ((number *)buffer)[0];
 	}
 }

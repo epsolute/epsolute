@@ -80,7 +80,10 @@ namespace BPlusTree
 		auto current = tree->leftmostDataBlock;
 		for (unsigned int i = from; i <= to; i++)
 		{
-			auto [payload, next] = tree->readDataBlock(current);
+			auto [type, read] = tree->checkType(current);
+			ASSERT_EQ(DataBlock, type);
+
+			auto [payload, next] = tree->readDataBlock(read);
 			ASSERT_EQ(size, payload.size());
 			auto block = find_if(
 				data.begin(),
@@ -124,8 +127,10 @@ namespace BPlusTree
 
 		auto pairs = generatePairs(BLOCK_SIZE).second;
 
-		auto address = tree->createNodeBlock(pairs);
-		auto read	= tree->readNodeBlock(address);
+		auto address	   = tree->createNodeBlock(pairs);
+		auto [type, block] = tree->checkType(address);
+		ASSERT_EQ(NodeBlock, type);
+		auto read = tree->readNodeBlock(block);
 
 		ASSERT_EQ(pairs, read);
 
@@ -142,7 +147,10 @@ namespace BPlusTree
 		auto counter = 0;
 		for (unsigned int i = 0; i < pushed.size(); i++)
 		{
-			auto block = tree->readNodeBlock(pushed[i].second);
+			auto [type, read] = tree->checkType(pushed[i].second);
+			ASSERT_EQ(NodeBlock, type);
+
+			auto block = tree->readNodeBlock(read);
 			for (auto key : block)
 			{
 				EXPECT_LE(key.first, pushed[i].first);

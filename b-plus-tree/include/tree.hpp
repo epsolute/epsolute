@@ -7,10 +7,16 @@ namespace BPlusTree
 {
 	using namespace std;
 
+	enum BlockType
+	{
+		DataBlock,
+		NodeBlock
+	};
+
 	class Tree
 	{
 		public:
-		number search(number key);
+		bytes search(number key);
 
 		Tree(AbsStorageAdapter *storage);
 		Tree(AbsStorageAdapter *storage, vector<pair<number, bytes>> data);
@@ -22,10 +28,12 @@ namespace BPlusTree
 		number leftmostDataBlock; // for testing
 
 		number createDataBlock(bytes data, number next);
-		pair<bytes, number> readDataBlock(number address);
+		pair<bytes, number> readDataBlock(bytes block);
 
 		number createNodeBlock(vector<pair<number, number>> data);
-		vector<pair<number, number>> readNodeBlock(number address);
+		vector<pair<number, number>> readNodeBlock(bytes block);
+
+		pair<BlockType, bytes> checkType(number address);
 
 		vector<pair<number, number>> pushLayer(vector<pair<number, number>> input);
 
