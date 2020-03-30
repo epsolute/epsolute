@@ -26,12 +26,12 @@ namespace BPlusTree
 		vector<pair<number, number>> layer;
 		layer.resize(data.size());
 
-		for (unsigned int i = data.size() - 1; i >= 0; i--)
+		for (int i = data.size() - 1; i >= 0; i--)
 		{
 			layer[i].first  = data[i].first;
 			layer[i].second = createDataBlock(
 				data[i].second,
-				i == data.size() - 1 ? storage->empty() : layer[i + 1].second);
+				(unsigned int)i == data.size() - 1 ? storage->empty() : layer[i + 1].second);
 		}
 
 		leftmostDataBlock = layer[0].second;
@@ -61,12 +61,13 @@ namespace BPlusTree
 			copy(data.begin() + i * userBlockSize, data.begin() + end, back_inserter(buffer));
 			buffer.resize(userBlockSize);
 
-			auto thisSize   = bytesFromNumber(end - i * userBlockSize);
-			auto nextBlock  = bytesFromNumber(i < blocks - 1 ? addresses[i + 1] : storage->empty());
-			auto nextBucket = bytesFromNumber(i < blocks - 1 ? storage->empty() : next);
+			auto thisSize   = end - i * userBlockSize;
+			auto nextBlock  = i < blocks - 1 ? addresses[i + 1] : storage->empty();
+			auto nextBucket = i < blocks - 1 ? storage->empty() : next;
+			auto numbers	= concatNumbers(3, thisSize, nextBlock, nextBucket);
 			storage->set(
 				addresses[i],
-				concat(4, &thisSize, &nextBlock, &nextBucket, &buffer));
+				concat(2, &numbers, &buffer));
 		}
 
 		return addresses[0];
@@ -79,11 +80,13 @@ namespace BPlusTree
 		while (true)
 		{
 			auto read		   = storage->get(address);
-			auto deconstructed = deconstruct(read, {sizeof(number), 2 * sizeof(number), 3 * sizeof(number)});
-			auto thisSize	  = numberFromBytes(deconstructed[0]);
-			auto nextBlock	 = numberFromBytes(deconstructed[1]);
-			auto nextBucket	= numberFromBytes(deconstructed[2]);
-			auto blockData	 = deconstructed[3];
+			auto deconstructed = deconstruct(read, {3 * sizeof(number)});
+			auto numbers	   = deconstructNumbers(deconstructed[0]);
+			auto blockData	 = deconstructed[1];
+
+			auto thisSize   = numbers[0];
+			auto nextBlock  = numbers[1];
+			auto nextBucket = numbers[2];
 
 			blockData.resize(thisSize);
 			data = concat(2, &data, &blockData);

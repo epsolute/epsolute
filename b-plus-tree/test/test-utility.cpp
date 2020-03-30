@@ -71,6 +71,21 @@ namespace BPlusTree
 		EXPECT_EQ(second, deconstructed[1]);
 		EXPECT_EQ(third, deconstructed[2]);
 	}
+
+	TEST_F(UtilityTest, DeconstructNumbers)
+	{
+		number first  = 56uLL;
+		number second = 8965uLL;
+		number third  = 4683458uLL;
+
+		auto concatenated  = concatNumbers(3, first, second, third);
+		auto deconstructed = deconstructNumbers(concatenated);
+
+		ASSERT_EQ(3, deconstructed.size());
+		EXPECT_EQ(first, deconstructed[0]);
+		EXPECT_EQ(second, deconstructed[1]);
+		EXPECT_EQ(third, deconstructed[2]);
+	}
 }
 
 int main(int argc, char** argv)

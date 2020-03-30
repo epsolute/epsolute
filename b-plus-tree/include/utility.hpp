@@ -12,8 +12,11 @@ namespace BPlusTree
 	string toText(bytes data, number BLOCK_SIZE);
 
 	bytes concat(int count, ...);
-	bytes concatNumbers(int count, ...);
 	vector<bytes> deconstruct(bytes data, vector<int> stops);
+
+	bytes concatNumbers(int count, ...);
+	vector<number> deconstructNumbers(bytes data);
+
 	bytes bytesFromNumber(number num);
 	number numberFromBytes(bytes data);
 }

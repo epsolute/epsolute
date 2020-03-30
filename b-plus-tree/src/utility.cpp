@@ -53,16 +53,16 @@ namespace BPlusTree
 		va_list args;
 		va_start(args, count);
 
+		number numbers[count];
+
 		bytes result;
 		for (int i = 0; i < count; i++)
 		{
-			number num  = va_arg(args, number);
-			auto numVec = bytesFromNumber(num);
-			result.insert(result.end(), numVec.begin(), numVec.end());
+			numbers[i] = va_arg(args, number);
 		}
 		va_end(args);
 
-		return result;
+		return bytes((uchar *)numbers, (uchar *)numbers + count * sizeof(number));
 	}
 
 	bytes bytesFromNumber(number num)
@@ -92,5 +92,14 @@ namespace BPlusTree
 		}
 
 		return result;
+	}
+
+	vector<number> deconstructNumbers(bytes data)
+	{
+		auto count = data.size() / sizeof(number);
+
+		uchar buffer[count * sizeof(number)];
+		copy(data.begin(), data.end(), buffer);
+		return vector<number>((number *)buffer, (number *)buffer + count);
 	}
 }
