@@ -45,6 +45,21 @@ namespace BPlusTree
 		return data;
 	}
 
+	pair<number, vector<pair<number, number>>> generatePairs(number BLOCK_SIZE)
+	{
+		auto count = (BLOCK_SIZE - sizeof(number)) / sizeof(number) / 2;
+
+		vector<pair<number, number>> pairs;
+		pairs.resize(count);
+		for (unsigned int i = 0; i < count; i++)
+		{
+			pairs[i].first  = i * 17;
+			pairs[i].second = i * 19;
+		}
+
+		return {count, pairs};
+	}
+
 	TEST_F(TreeTest, Initialization)
 	{
 		auto data = generateDataPoints(5, 7, 100);
@@ -77,6 +92,42 @@ namespace BPlusTree
 
 			ASSERT_EQ((*block).second, payload);
 		}
+
+		delete tree;
+	}
+
+	TEST_F(TreeTest, CreateNodeBlockTooBig)
+	{
+		tree = new Tree(storage);
+		vector<pair<number, number>> pairs;
+		pairs.resize(BLOCK_SIZE / 2);
+
+		ASSERT_ANY_THROW(tree->createNodeBlock(pairs));
+
+		delete tree;
+	}
+
+	TEST_F(TreeTest, CreateNodeBlock)
+	{
+		tree = new Tree(storage);
+
+		auto pairs = generatePairs(BLOCK_SIZE).second;
+
+		ASSERT_NO_THROW(tree->createNodeBlock(pairs));
+
+		delete tree;
+	}
+
+	TEST_F(TreeTest, ReadNodeBlock)
+	{
+		tree = new Tree(storage);
+
+		auto pairs = generatePairs(BLOCK_SIZE).second;
+
+		auto address = tree->createNodeBlock(pairs);
+		auto read	= tree->readNodeBlock(address);
+
+		ASSERT_EQ(pairs, read);
 
 		delete tree;
 	}

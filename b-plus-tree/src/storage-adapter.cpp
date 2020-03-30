@@ -41,7 +41,7 @@ namespace BPlusTree
 	{
 		if (data.size() != blockSize)
 		{
-			throw boost::str(boost::format("data size (%1%) does not match block size (%2%)") % data.size() % blockSize);
+			throw Exception(boost::format("data size (%1%) does not match block size (%2%)") % data.size() % blockSize);
 		}
 
 		checkLocation(location);
@@ -68,7 +68,7 @@ namespace BPlusTree
 	{
 		if (location >= locationCounter)
 		{
-			throw boost::str(boost::format("attempt to access memory that was not malloced (%1%)") % location);
+			throw Exception(boost::format("attempt to access memory that was not malloced (%1%)") % location);
 		}
 	}
 }

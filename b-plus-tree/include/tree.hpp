@@ -24,6 +24,12 @@ namespace BPlusTree
 		number createDataBlock(bytes data, number next);
 		pair<bytes, number> readDataBlock(number address);
 
+		number createNodeBlock(vector<pair<number, number>> data);
+		vector<pair<number, number>> readNodeBlock(number address);
+
 		friend class TreeTest_ReadDataLayer_Test;
+		friend class TreeTest_CreateNodeBlockTooBig_Test;
+		friend class TreeTest_CreateNodeBlock_Test;
+		friend class TreeTest_ReadNodeBlock_Test;
 	};
 }

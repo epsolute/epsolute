@@ -92,14 +92,14 @@ run-shared-lib: shared
 
 run-tests: CPPFLAGS += -DTESTING
 run-tests: $(TESTBIN)
-	$(addsuffix &&, $(TESTBIN)) true
+	$(addsuffix &&, $(TESTBIN)) echo Tests passed!
 
 run-benchmarks: $(BENCHMARKSBIN)
-	$(addsuffix &&, $(BENCHMARKSBIN)) true
+	$(addsuffix &&, $(BENCHMARKSBIN)) echo Benchmarks completed!
 
 run-integration: CPPFLAGS += -DTESTING
 run-integration: $(INTEGRATIONBIN)
-	$(addsuffix &&, $(INTEGRATIONBIN)) true
+	$(addsuffix &&, $(INTEGRATIONBIN)) echo Tests passed!
 
 coverage: profile
 	gcovr -r . $(addprefix -f $(SDIR)/, $(addsuffix .cpp, $(ENTITIES))) --exclude-unreachable-branches

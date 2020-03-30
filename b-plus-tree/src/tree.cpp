@@ -8,6 +8,7 @@
 namespace BPlusTree
 {
 	using namespace std;
+	using boost::format;
 
 	Tree::Tree(AbsStorageAdapter *storage) :
 		storage(storage)
@@ -35,6 +36,56 @@ namespace BPlusTree
 		}
 
 		leftmostDataBlock = layer[0].second;
+	}
+
+	number Tree::createNodeBlock(vector<pair<number, number>> data)
+	{
+		if (storage->getBlockSize() - sizeof(number) < data.size() * 2 * sizeof(number))
+		{
+			throw Exception(boost::format("data size (%1% pairs) is too big for block size (%2%)") % data.size() % (storage->getBlockSize() - sizeof(number)));
+		}
+
+		number numbers[data.size() * 2 + 1];
+
+		numbers[0] = data.size() * 2 * sizeof(number);
+		for (unsigned int i = 0; i < data.size(); i++)
+		{
+			numbers[1 + 2 * i]	 = data[i].first;
+			numbers[1 + 2 * i + 1] = data[i].second;
+		}
+		bytes block((uchar *)numbers, (uchar *)numbers + (data.size() * 2 + 1) * sizeof(number));
+		block.resize(storage->getBlockSize());
+
+		auto address = storage->malloc();
+		storage->set(address, block);
+
+		return address;
+	}
+
+	vector<pair<number, number>> Tree::readNodeBlock(number address)
+	{
+		auto read = storage->get(address);
+
+		auto deconstructed = deconstruct(read, {sizeof(number)});
+		auto size		   = numberFromBytes(deconstructed[0]);
+		auto blockData	 = deconstructed[1];
+
+		blockData.resize(size);
+
+		auto count = blockData.size() / sizeof(number);
+
+		uchar buffer[count * sizeof(number)];
+		copy(blockData.begin(), blockData.end(), buffer);
+
+		vector<pair<number, number>> result;
+		result.resize(count / 2);
+		for (unsigned int i = 0; i < count / 2; i++)
+		{
+			result[i].first  = ((number *)buffer)[2 * i];
+			result[i].second = ((number *)buffer)[2 * i + 1];
+		}
+
+		return result;
 	}
 
 	number Tree::createDataBlock(bytes data, number next)
