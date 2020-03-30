@@ -53,6 +53,35 @@ namespace BPlusTree
 
 	bytes Tree::search(number key)
 	{
+		auto address = root;
+		while (true)
+		{
+			auto [type, read] = checkType(address);
+			switch (type)
+			{
+				case NodeBlock:
+				{
+					auto block = readNodeBlock(read);
+					for (int i = block.size() - 1; i >= 0; i--)
+					{
+						if (block[i].first <= key)
+						{
+							address = block[i].second;
+							break;
+						}
+						address = block[0].second; // means leftmost
+					}
+					// TODO if not found
+					break;
+				}
+				case DataBlock:
+				{
+					return readDataBlock(read).first;
+					// TODO check that this is the searched for key
+					break;
+				}
+			}
+		}
 	}
 
 	// TODO document that number of pointers and keys is the same

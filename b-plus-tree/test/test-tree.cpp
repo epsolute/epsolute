@@ -162,6 +162,28 @@ namespace BPlusTree
 
 		delete tree;
 	}
+
+	TEST_F(TreeTest, BasicSearch)
+	{
+		const auto from  = 5;
+		const auto to	= 15;
+		const auto size  = 100;
+		const auto query = 10;
+
+		auto data = generateDataPoints(from, to, size);
+
+		tree = new Tree(storage, data);
+
+		auto returned = tree->search(query);
+		auto expected = find_if(
+			data.begin(),
+			data.end(),
+			[query](const pair<number, bytes>& val) {
+				return val.first == query;
+			});
+
+		ASSERT_EQ((*expected).second, returned);
+	}
 }
 
 int main(int argc, char** argv)
