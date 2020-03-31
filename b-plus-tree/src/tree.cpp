@@ -34,6 +34,7 @@ namespace BPlusTree
 			layer[i].first  = data[i].first;
 			layer[i].second = createDataBlock(
 				data[i].second,
+				data[i].first,
 				(unsigned int)i == data.size() - 1 ? storage->empty() : layer[i + 1].second);
 		}
 		leftmostDataBlock = layer[0].second;
@@ -74,7 +75,7 @@ namespace BPlusTree
 				}
 				case DataBlock:
 				{
-					return readDataBlock(read).first;
+					return get<0>(readDataBlock(read));
 					// TODO check that this is the searched for key
 					break;
 				}
@@ -165,13 +166,9 @@ namespace BPlusTree
 		return result;
 	}
 
-	number Tree::createDataBlock(bytes data, number next)
+	number Tree::createDataBlock(bytes data, number key, number next)
 	{
-		// 3 numbers are reserved:
-		//	pointer to next block of the same data (if not the last such block)
-		//	pointer to next data block (if the last such block)
-		//	size of the user's data in a block (usefull for the last block)
-		auto firstBlockSize = storage->getBlockSize() - 3 * sizeof(number);
+		auto firstBlockSize = storage->getBlockSize() - 4 * sizeof(number);
 		auto otherBlockSize = storage->getBlockSize() - 2 * sizeof(number);
 
 		auto blocks =
@@ -199,7 +196,7 @@ namespace BPlusTree
 			bytes numbers;
 			if (i == 0)
 			{
-				numbers = concatNumbers(3, thisTypeAndSize, nextBlock, next);
+				numbers = concatNumbers(4, thisTypeAndSize, nextBlock, next, key);
 			}
 			else
 			{
@@ -216,11 +213,12 @@ namespace BPlusTree
 		return addresses[0];
 	}
 
-	pair<bytes, number> Tree::readDataBlock(bytes block)
+	tuple<bytes, number, number> Tree::readDataBlock(bytes block)
 	{
 		bytes data;
 		auto address = storage->empty();
 		number nextBucket;
+		number key;
 
 		while (true)
 		{
@@ -228,7 +226,7 @@ namespace BPlusTree
 
 			auto read = first ? block : storage->get(address);
 
-			auto deconstructed = deconstruct(read, {(first ? 3 : 2) * (int)sizeof(number)});
+			auto deconstructed = deconstruct(read, {(first ? 4 : 2) * (int)sizeof(number)});
 			auto numbers	   = deconstructNumbers(deconstructed[0]);
 			auto blockData	 = deconstructed[1];
 
@@ -242,6 +240,7 @@ namespace BPlusTree
 			if (first)
 			{
 				nextBucket = numbers[2];
+				key		   = numbers[3];
 			}
 			blockData.resize(thisSize);
 			data = concat(2, &data, &blockData);
@@ -253,7 +252,7 @@ namespace BPlusTree
 			}
 			else
 			{
-				return {data, nextBucket};
+				return {data, key, nextBucket};
 			}
 		}
 	}
@@ -313,8 +312,11 @@ namespace BPlusTree
 			{
 				auto block = readDataBlock(read);
 				throwIf(
-					block.second == storage->empty() && !rightmost,
+					get<2>(block) == storage->empty() && !rightmost,
 					Exception("empty pointer to the next data block, not the rightmost"));
+				throwIf(
+					get<1>(block) != largestKey,
+					Exception("data block has the key different from the parent's"));
 				break;
 			}
 			default:

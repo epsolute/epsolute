@@ -27,8 +27,8 @@ namespace BPlusTree
 		number b;
 		number leftmostDataBlock; // for testing
 
-		number createDataBlock(bytes data, number next);
-		pair<bytes, number> readDataBlock(bytes block);
+		number createDataBlock(bytes data, number key, number next);
+		tuple<bytes, number, number> readDataBlock(bytes block);
 
 		number createNodeBlock(vector<pair<number, number>> data);
 		vector<pair<number, number>> readNodeBlock(bytes block);
@@ -47,6 +47,7 @@ namespace BPlusTree
 		friend class TreeTest_PushLayer_Test;
 		friend class TreeTest_ConsistencyCheck_Test;
 		friend class TreeTest_ConsistencyCheckWrongBlockType_Test;
-		friend class TreeTest_ConsistencyCheckDateBlockPointer_Test;
+		friend class TreeTest_ConsistencyCheckDataBlockPointer_Test;
+		friend class TreeTest_ConsistencyCheckDataBlockKey_Test;
 	};
 }

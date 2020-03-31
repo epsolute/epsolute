@@ -114,7 +114,7 @@ namespace BPlusTree
 			auto [type, read] = tree->checkType(current);
 			ASSERT_EQ(DataBlock, type);
 
-			auto [payload, next] = tree->readDataBlock(read);
+			auto [payload, key, next] = tree->readDataBlock(read);
 			ASSERT_EQ(size, payload.size());
 			auto block = find_if(
 				data.begin(),
@@ -125,6 +125,7 @@ namespace BPlusTree
 			current = next;
 
 			ASSERT_EQ((*block).second, payload);
+			ASSERT_EQ(i, key);
 		}
 
 		delete tree;
@@ -233,7 +234,7 @@ namespace BPlusTree
 		ASSERT_THROW_CONTAINS(tree->checkConsistency(), "block type");
 	}
 
-	TEST_F(TreeTest, ConsistencyCheckDateBlockPointer)
+	TEST_F(TreeTest, ConsistencyCheckDataBlockPointer)
 	{
 		populateTree();
 
@@ -242,6 +243,17 @@ namespace BPlusTree
 		storage->set(tree->leftmostDataBlock, dataBlock);
 
 		ASSERT_THROW_CONTAINS(tree->checkConsistency(), "data block");
+	}
+
+	TEST_F(TreeTest, ConsistencyCheckDataBlockKey)
+	{
+		populateTree();
+
+		auto dataBlock				  = storage->get(tree->leftmostDataBlock);
+		dataBlock[sizeof(number) * 3] = 0uLL;
+		storage->set(tree->leftmostDataBlock, dataBlock);
+
+		ASSERT_THROW_CONTAINS(tree->checkConsistency(), "key");
 	}
 }
 
