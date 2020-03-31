@@ -31,18 +31,24 @@ namespace BPlusTree
 	vector<pair<number, bytes>> generateDataPoints(int from, int to, int size, int duplicates = 1);
 	pair<number, vector<pair<number, number>>> generatePairs(number BLOCK_SIZE);
 
-	class TreeTest : public testing::Test
+	class TreeTest : public testing::TestWithParam<number>
 	{
 		public:
-		inline static const number BLOCK_SIZE = 64;
+		inline static number BLOCK_SIZE;
 
 		protected:
 		Tree* tree;
-		AbsStorageAdapter* storage = new InMemoryStorageAdapter(BLOCK_SIZE);
+		AbsStorageAdapter* storage;
 
 		~TreeTest() override
 		{
 			delete storage;
+		}
+
+		TreeTest()
+		{
+			BLOCK_SIZE = GetParam();
+			storage	   = new InMemoryStorageAdapter(BLOCK_SIZE);
 		}
 
 		vector<pair<number, bytes>> populateTree(int from = 5, int to = 15, int size = 100, int duplicates = 1)
@@ -87,24 +93,24 @@ namespace BPlusTree
 		pairs.resize(count);
 		for (unsigned int i = 0; i < count; i++)
 		{
-			pairs[i].first  = i;
+			pairs[i].first	= i;
 			pairs[i].second = i * 1000;
 		}
 
 		return {count, pairs};
 	}
 
-	TEST_F(TreeTest, Initialization)
+	TEST_P(TreeTest, Initialization)
 	{
 		auto data = generateDataPoints(5, 7, 100);
 
 		ASSERT_NO_THROW(new Tree(storage, data));
 	}
 
-	TEST_F(TreeTest, ReadDataLayer)
+	TEST_P(TreeTest, ReadDataLayer)
 	{
 		const auto from = 5;
-		const auto to   = 7;
+		const auto to	= 7;
 		const auto size = 100;
 
 		auto data = generateDataPoints(from, to, size);
@@ -134,7 +140,7 @@ namespace BPlusTree
 		delete tree;
 	}
 
-	TEST_F(TreeTest, CreateNodeBlockTooBig)
+	TEST_P(TreeTest, CreateNodeBlockTooBig)
 	{
 		tree = new Tree(storage);
 		vector<pair<number, number>> pairs;
@@ -145,7 +151,7 @@ namespace BPlusTree
 		delete tree;
 	}
 
-	TEST_F(TreeTest, CreateNodeBlock)
+	TEST_P(TreeTest, CreateNodeBlock)
 	{
 		tree = new Tree(storage);
 
@@ -156,7 +162,7 @@ namespace BPlusTree
 		delete tree;
 	}
 
-	TEST_F(TreeTest, ReadNodeBlock)
+	TEST_P(TreeTest, ReadNodeBlock)
 	{
 		tree = new Tree(storage);
 
@@ -172,13 +178,13 @@ namespace BPlusTree
 		delete tree;
 	}
 
-	TEST_F(TreeTest, PushLayer)
+	TEST_P(TreeTest, PushLayer)
 	{
 		tree = new Tree(storage);
 
 		auto [count, pairs] = generatePairs(BLOCK_SIZE * 2);
 
-		auto pushed  = tree->pushLayer(pairs);
+		auto pushed	 = tree->pushLayer(pairs);
 		auto counter = 0;
 		for (unsigned int i = 0; i < pushed.size(); i++)
 		{
@@ -198,7 +204,7 @@ namespace BPlusTree
 		delete tree;
 	}
 
-	TEST_F(TreeTest, BasicSearch)
+	TEST_P(TreeTest, BasicSearch)
 	{
 		const auto query = 10uLL;
 
@@ -218,7 +224,7 @@ namespace BPlusTree
 		delete tree;
 	}
 
-	TEST_F(TreeTest, BasicSearchNotFound)
+	TEST_P(TreeTest, BasicSearchNotFound)
 	{
 		const auto query = 20uLL;
 
@@ -231,7 +237,7 @@ namespace BPlusTree
 		delete tree;
 	}
 
-	TEST_F(TreeTest, BasicSearchDuplicates)
+	TEST_P(TreeTest, BasicSearchDuplicates)
 	{
 		const auto query	  = 10uLL;
 		const auto duplicates = 3;
@@ -264,7 +270,7 @@ namespace BPlusTree
 		delete tree;
 	}
 
-	TEST_F(TreeTest, BasicSearchRangeDuplicates)
+	TEST_P(TreeTest, BasicSearchRangeDuplicates)
 	{
 		const auto start	  = 8uLL;
 		const auto end		  = 11uLL;
@@ -295,7 +301,7 @@ namespace BPlusTree
 		delete tree;
 	}
 
-	TEST_F(TreeTest, ConsistencyCheck)
+	TEST_P(TreeTest, ConsistencyCheck)
 	{
 		populateTree();
 
@@ -304,18 +310,18 @@ namespace BPlusTree
 		delete tree;
 	}
 
-	TEST_F(TreeTest, ConsistencyCheckWrongBlockType)
+	TEST_P(TreeTest, ConsistencyCheckWrongBlockType)
 	{
 		populateTree();
 
 		auto root = storage->get(tree->root);
-		root[0]   = 0xff;
+		root[0]	  = 0xff;
 		storage->set(tree->root, root);
 
 		ASSERT_THROW_CONTAINS(tree->checkConsistency(), "block type");
 	}
 
-	TEST_F(TreeTest, ConsistencyCheckDataBlockPointer)
+	TEST_P(TreeTest, ConsistencyCheckDataBlockPointer)
 	{
 		populateTree();
 
@@ -326,7 +332,7 @@ namespace BPlusTree
 		ASSERT_THROW_CONTAINS(tree->checkConsistency(), "data block");
 	}
 
-	TEST_F(TreeTest, ConsistencyCheckDataBlockKey)
+	TEST_P(TreeTest, ConsistencyCheckDataBlockKey)
 	{
 		populateTree();
 
@@ -336,6 +342,19 @@ namespace BPlusTree
 
 		ASSERT_THROW_CONTAINS(tree->checkConsistency(), "key");
 	}
+
+	string printTestName(testing::TestParamInfo<number> input)
+	{
+		return to_string(input.param);
+	}
+
+	number cases[] = {
+		64,
+		128,
+		256,
+	};
+
+	INSTANTIATE_TEST_SUITE_P(TreeTestSuite, TreeTest, testing::ValuesIn(cases), printTestName);
 }
 
 int main(int argc, char** argv)

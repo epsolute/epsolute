@@ -31,7 +31,7 @@ namespace BPlusTree
 		layer.resize(data.size());
 		for (int i = data.size() - 1; i >= 0; i--)
 		{
-			layer[i].first  = data[i].first;
+			layer[i].first	= data[i].first;
 			layer[i].second = createDataBlock(
 				data[i].second,
 				data[i].first,
@@ -66,7 +66,7 @@ namespace BPlusTree
 				case NodeBlock:
 				{
 					auto block = readNodeBlock(read);
-					address	= storage->empty();
+					address	   = storage->empty();
 					for (unsigned int i = 0; i < block.size(); i++)
 					{
 						if (start <= block[i].first)
@@ -88,11 +88,15 @@ namespace BPlusTree
 					while (true)
 					{
 						auto block = readDataBlock(read);
-						if (get<1>(block) < start || get<1>(block) > end || get<2>(block) == storage->empty())
+						if (get<1>(block) < start || get<1>(block) > end)
 						{
 							return result;
 						}
 						result.push_back(get<0>(block));
+						if (get<2>(block) == storage->empty())
+						{
+							return result;
+						}
 						read = checkType(get<2>(block)).second;
 					}
 				}
@@ -142,7 +146,7 @@ namespace BPlusTree
 		numbers[0] = setTypeSize(NodeBlock, data.size() * 2 * sizeof(number));
 		for (unsigned int i = 0; i < data.size(); i++)
 		{
-			numbers[1 + 2 * i]	 = data[i].first;
+			numbers[1 + 2 * i]	   = data[i].first;
 			numbers[1 + 2 * i + 1] = data[i].second;
 		}
 		bytes block((uchar *)numbers, (uchar *)numbers + (data.size() * 2 + 1) * sizeof(number));
@@ -158,7 +162,7 @@ namespace BPlusTree
 	{
 		auto deconstructed = deconstruct(block, {sizeof(number)});
 		auto [type, size]  = getTypeSize(numberFromBytes(deconstructed[0]));
-		auto blockData	 = deconstructed[1];
+		auto blockData	   = deconstructed[1];
 
 		if (type != NodeBlock)
 		{
@@ -176,7 +180,7 @@ namespace BPlusTree
 		result.resize(count / 2);
 		for (unsigned int i = 0; i < count / 2; i++)
 		{
-			result[i].first  = ((number *)buffer)[2 * i];
+			result[i].first	 = ((number *)buffer)[2 * i];
 			result[i].second = ((number *)buffer)[2 * i + 1];
 		}
 
@@ -245,7 +249,7 @@ namespace BPlusTree
 
 			auto deconstructed = deconstruct(read, {(first ? 4 : 2) * (int)sizeof(number)});
 			auto numbers	   = deconstructNumbers(deconstructed[0]);
-			auto blockData	 = deconstructed[1];
+			auto blockData	   = deconstructed[1];
 
 			auto [type, thisSize] = getTypeSize(numbers[0]);
 			if (type != DataBlock)

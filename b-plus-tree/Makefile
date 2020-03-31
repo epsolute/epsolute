@@ -37,7 +37,7 @@ TESTBIN = $(addprefix $(BDIR)/test-, $(TESTS))
 BENCHMARKS = # TODO
 BENCHMARKSBIN = $(addprefix $(BDIR)/benchmark-, $(BENCHMARKS))
 
-INTEGRATION = # TODO
+INTEGRATION = tree-big
 INTEGRATIONBIN = $(addprefix $(BDIR)/test-, $(INTEGRATION))
 
 ENTRYPOINTCC = $(CC) -o $@ $^ $(CPPFLAGS) $(INCLUDES) $(LDLIBS) $(LDTESTLIBS) $(LDFLAGS)

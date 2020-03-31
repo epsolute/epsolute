@@ -28,7 +28,8 @@
 			"options": [
 				"storage-adapter",
 				"utility",
-				"tree"
+				"tree",
+				"tree-big"
 			],
 			"default": "tree"
 		},

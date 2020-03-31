@@ -26,6 +26,7 @@ namespace BPlusTree
 		AbsStorageAdapter *storage;
 		number root;
 		number b;
+
 		number leftmostDataBlock; // for testing
 
 		number createDataBlock(bytes data, number key, number next);
@@ -50,5 +51,6 @@ namespace BPlusTree
 		friend class TreeTest_ConsistencyCheckWrongBlockType_Test;
 		friend class TreeTest_ConsistencyCheckDataBlockPointer_Test;
 		friend class TreeTest_ConsistencyCheckDataBlockKey_Test;
+		friend class TreeTestBig_Simulation_Test;
 	};
 }
