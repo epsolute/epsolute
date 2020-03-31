@@ -50,7 +50,7 @@ namespace BPlusTree
 		root = layer[0].second;
 	}
 
-	bytes Tree::search(number key)
+	vector<bytes> Tree::search(number key)
 	{
 		auto address = root;
 		while (true)
@@ -61,23 +61,35 @@ namespace BPlusTree
 				case NodeBlock:
 				{
 					auto block = readNodeBlock(read);
-					for (int i = block.size() - 1; i >= 0; i--)
+					address	= storage->empty();
+					for (unsigned int i = 0; i < block.size(); i++)
 					{
-						if (block[i].first <= key)
+						if (key <= block[i].first)
 						{
 							address = block[i].second;
 							break;
 						}
-						address = block[0].second; // means leftmost
 					}
-					// TODO if not found
+					if (address == storage->empty())
+					{
+						return vector<bytes>();
+					}
 					break;
 				}
 				case DataBlock:
 				{
-					return get<0>(readDataBlock(read));
-					// TODO check that this is the searched for key
-					break;
+					vector<bytes> result;
+					tuple<bytes, number, number> block;
+					while (true)
+					{
+						auto block = readDataBlock(read);
+						if (get<1>(block) != key || get<2>(block) == storage->empty())
+						{
+							return result;
+						}
+						result.push_back(get<0>(block));
+						read = checkType(get<2>(block)).second;
+					}
 				}
 			}
 		}

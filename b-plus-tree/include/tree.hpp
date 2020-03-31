@@ -16,7 +16,7 @@ namespace BPlusTree
 	class Tree
 	{
 		public:
-		bytes search(number key);
+		vector<bytes> search(number key);
 
 		Tree(AbsStorageAdapter *storage);
 		Tree(AbsStorageAdapter *storage, vector<pair<number, bytes>> data);

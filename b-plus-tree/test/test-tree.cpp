@@ -28,7 +28,7 @@ using namespace std;
 namespace BPlusTree
 {
 	bytes generateDataBytes(string word, int size);
-	vector<pair<number, bytes>> generateDataPoints(int from, int to, int size);
+	vector<pair<number, bytes>> generateDataPoints(int from, int to, int size, int duplicates = 1);
 	pair<number, vector<pair<number, number>>> generatePairs(number BLOCK_SIZE);
 
 	class TreeTest : public testing::Test
@@ -45,9 +45,9 @@ namespace BPlusTree
 			delete storage;
 		}
 
-		vector<pair<number, bytes>> populateTree(int from = 5, int to = 15, int size = 100)
+		vector<pair<number, bytes>> populateTree(int from = 5, int to = 15, int size = 100, int duplicates = 1)
 		{
-			auto data = generateDataPoints(from, to, size);
+			auto data = generateDataPoints(from, to, size, duplicates);
 			tree	  = new Tree(storage, data);
 
 			return data;
@@ -65,12 +65,15 @@ namespace BPlusTree
 		return fromText(ss.str(), size);
 	}
 
-	vector<pair<number, bytes>> generateDataPoints(int from, int to, int size)
+	vector<pair<number, bytes>> generateDataPoints(int from, int to, int size, int duplicates)
 	{
 		vector<pair<number, bytes>> data;
 		for (int i = from; i <= to; i++)
 		{
-			data.push_back({i, generateDataBytes(to_string(i), size)});
+			for (int j = 0; j < duplicates; j++)
+			{
+				data.push_back({i, generateDataBytes(to_string(i), size)});
+			}
 		}
 
 		return data;
@@ -209,7 +212,54 @@ namespace BPlusTree
 				return val.first == query;
 			});
 
-		ASSERT_EQ((*expected).second, returned);
+		ASSERT_NE(0, returned.size());
+		ASSERT_EQ((*expected).second, returned[0]);
+
+		delete tree;
+	}
+
+	TEST_F(TreeTest, BasicSearchNotFound)
+	{
+		const auto query = 20uLL;
+
+		auto data = populateTree();
+
+		auto returned = tree->search(query);
+
+		ASSERT_EQ(0, returned.size());
+
+		delete tree;
+	}
+
+	TEST_F(TreeTest, BasicSearchDuplicates)
+	{
+		const auto query	  = 10uLL;
+		const auto duplicates = 3;
+
+		auto data = populateTree(5, 15, 100, duplicates);
+
+		auto returned = tree->search(query);
+
+		vector<bytes> expected;
+		auto i = data.begin();
+		while (i != data.end())
+		{
+			i = find_if(
+				i,
+				data.end(),
+				[](const pair<number, bytes>& val) {
+					return val.first == query;
+				});
+			if (i != data.end())
+			{
+				auto element = (*i).second;
+				expected.push_back(element);
+				i++;
+			}
+		}
+
+		ASSERT_EQ(duplicates, returned.size());
+		ASSERT_EQ(expected, returned);
 
 		delete tree;
 	}
