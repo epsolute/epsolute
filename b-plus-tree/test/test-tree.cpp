@@ -3,11 +3,34 @@
 #include "utility.hpp"
 
 #include "gtest/gtest.h"
+#include <boost/algorithm/string.hpp>
 
 using namespace std;
 
+#define ASSERT_THROW_CONTAINS(statement, substring)                                                                     \
+	try                                                                                                                 \
+	{                                                                                                                   \
+		statement;                                                                                                      \
+		FAIL() << "statement did not throw exception";                                                                  \
+	}                                                                                                                   \
+	catch (Exception exception)                                                                                         \
+	{                                                                                                                   \
+		if (!boost::icontains(exception.what(), substring))                                                             \
+		{                                                                                                               \
+			FAIL() << "exception message does not contain '" << substring << "', the message is: " << exception.what(); \
+		}                                                                                                               \
+	}                                                                                                                   \
+	catch (...)                                                                                                         \
+	{                                                                                                                   \
+		FAIL() << "statement threw unexpected exception";                                                               \
+	}
+
 namespace BPlusTree
 {
+	bytes generateDataBytes(string word, int size);
+	vector<pair<number, bytes>> generateDataPoints(int from, int to, int size);
+	pair<number, vector<pair<number, number>>> generatePairs(number BLOCK_SIZE);
+
 	class TreeTest : public testing::Test
 	{
 		public:
@@ -20,6 +43,14 @@ namespace BPlusTree
 		~TreeTest() override
 		{
 			delete storage;
+		}
+
+		vector<pair<number, bytes>> populateTree(int from = 5, int to = 15, int size = 100)
+		{
+			auto data = generateDataPoints(from, to, size);
+			tree	  = new Tree(storage, data);
+
+			return data;
 		}
 	};
 
@@ -165,24 +196,69 @@ namespace BPlusTree
 
 	TEST_F(TreeTest, BasicSearch)
 	{
-		const auto from  = 5;
-		const auto to	= 15;
-		const auto size  = 100;
 		const auto query = 10uLL;
 
-		auto data = generateDataPoints(from, to, size);
-
-		tree = new Tree(storage, data);
+		auto data = populateTree();
 
 		auto returned = tree->search(query);
 		auto expected = find_if(
 			data.begin(),
 			data.end(),
-			[query](const pair<number, bytes>& val) {
+			[](const pair<number, bytes>& val) {
 				return val.first == query;
 			});
 
 		ASSERT_EQ((*expected).second, returned);
+
+		delete tree;
+	}
+
+	TEST_F(TreeTest, ConsistencyCheck)
+	{
+		populateTree();
+
+		ASSERT_NO_THROW(tree->checkConsistency());
+
+		delete tree;
+	}
+
+	TEST_F(TreeTest, ConsistencyCheckWrongBlockType)
+	{
+		populateTree();
+
+		auto root = storage->get(tree->root);
+		root[0]   = 0xff;
+		storage->set(tree->root, root);
+
+		ASSERT_THROW_CONTAINS(tree->checkConsistency(), "block type");
+	}
+
+	TEST_F(TreeTest, ConsistencyCheckDateBlockPointer)
+	{
+		populateTree();
+
+		auto address = tree->leftmostDataBlock;
+		while (true)
+		{
+			auto dataBlock = storage->get(address);
+
+			auto deconstructed = deconstruct(dataBlock, {3 * sizeof(number)});
+			auto numbers	   = deconstructNumbers(deconstructed[0]);
+			auto nextBlock	 = numbers[1];
+
+			if (nextBlock == storage->empty())
+			{
+				dataBlock[sizeof(number) * 2] = storage->empty();
+				storage->set(address, dataBlock);
+				break;
+			}
+			else
+			{
+				address = nextBlock;
+			}
+		}
+
+		ASSERT_THROW_CONTAINS(tree->checkConsistency(), "data block");
 	}
 }
 

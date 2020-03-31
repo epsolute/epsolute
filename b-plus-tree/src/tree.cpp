@@ -248,6 +248,62 @@ namespace BPlusTree
 		return {getTypeSize(typeAndSize).first, block};
 	}
 
+	void Tree::checkConsistency()
+	{
+		checkConsistency(root, ULONG_MAX, true);
+	}
+
+	void Tree::checkConsistency(number address, number largestKey, bool rightmost)
+	{
+		auto throwIf = [](bool expression, Exception exception) {
+			if (expression)
+			{
+				throw exception;
+			}
+		};
+
+		auto [type, read] = checkType(address);
+		switch (type)
+		{
+			case NodeBlock:
+			{
+				auto block = readNodeBlock(read);
+				throwIf(
+					(block.size() < b / 2 && !rightmost) || block.size() == 0,
+					Exception(boost::format("block undeflow (%1%) for b = %2% and block is not the rightmost") % block.size() % b));
+
+				for (unsigned int i = 0; i < block.size(); i++)
+				{
+					if (i != 0)
+					{
+						throwIf(
+							block[i].first < block[i - 1].first,
+							Exception("wrong order of keys in a block"));
+					}
+					throwIf(
+						block[i].first > largestKey,
+						Exception("keys larger than the parent key is found in a block"));
+					throwIf(
+						block[i].second == storage->empty(),
+						Exception("empty pointer found in a block"));
+
+					checkConsistency(block[0].second, block[0].first, rightmost && i == block.size() - 1);
+				}
+				break;
+			}
+			case DataBlock:
+			{
+				auto block = readDataBlock(read);
+				throwIf(
+					block.second == storage->empty() && !rightmost,
+					Exception("empty pointer to the next data block, not the rightmost"));
+				break;
+			}
+			default:
+				throw Exception(boost::format("invalid block type: %1%") % type);
+		}
+	}
+
 	pair<BlockType, number> getTypeSize(number typeAndSize)
 	{
 		number buffer[1]{typeAndSize};
