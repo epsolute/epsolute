@@ -237,26 +237,9 @@ namespace BPlusTree
 	{
 		populateTree();
 
-		auto address = tree->leftmostDataBlock;
-		while (true)
-		{
-			auto dataBlock = storage->get(address);
-
-			auto deconstructed = deconstruct(dataBlock, {3 * sizeof(number)});
-			auto numbers	   = deconstructNumbers(deconstructed[0]);
-			auto nextBlock	 = numbers[1];
-
-			if (nextBlock == storage->empty())
-			{
-				dataBlock[sizeof(number) * 2] = storage->empty();
-				storage->set(address, dataBlock);
-				break;
-			}
-			else
-			{
-				address = nextBlock;
-			}
-		}
+		auto dataBlock				  = storage->get(tree->leftmostDataBlock);
+		dataBlock[sizeof(number) * 2] = storage->empty();
+		storage->set(tree->leftmostDataBlock, dataBlock);
 
 		ASSERT_THROW_CONTAINS(tree->checkConsistency(), "data block");
 	}

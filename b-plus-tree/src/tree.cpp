@@ -24,8 +24,6 @@ namespace BPlusTree
 	Tree::Tree(AbsStorageAdapter *storage, vector<pair<number, bytes>> data) :
 		Tree(storage)
 	{
-		// auto metaLocation = storage->malloc();
-
 		sort(data.begin(), data.end(), [](pair<number, bytes> a, pair<number, bytes> b) { return a.first < b.first; });
 
 		// data layer
@@ -173,9 +171,13 @@ namespace BPlusTree
 		//	pointer to next block of the same data (if not the last such block)
 		//	pointer to next data block (if the last such block)
 		//	size of the user's data in a block (usefull for the last block)
-		auto userBlockSize = storage->getBlockSize() - 3 * sizeof(number);
+		auto firstBlockSize = storage->getBlockSize() - 3 * sizeof(number);
+		auto otherBlockSize = storage->getBlockSize() - 2 * sizeof(number);
 
-		auto blocks = (data.size() + userBlockSize - 1) / userBlockSize;
+		auto blocks =
+			data.size() <= firstBlockSize ?
+				1 :
+				1 + (data.size() - firstBlockSize + otherBlockSize - 1) / otherBlockSize;
 		vector<number> addresses;
 		addresses.resize(blocks);
 		for (unsigned int i = 0; i < blocks; i++)
@@ -183,21 +185,32 @@ namespace BPlusTree
 			addresses[i] = storage->malloc();
 		}
 
+		auto readSoFar = 0;
 		for (number i = 0; i < blocks; i++)
 		{
 			bytes buffer;
-			auto end = min(userBlockSize * (i + 1), (number)data.size());
+			auto end = min(readSoFar + (i == 0 ? firstBlockSize : otherBlockSize), (number)data.size());
 
-			copy(data.begin() + i * userBlockSize, data.begin() + end, back_inserter(buffer));
-			buffer.resize(userBlockSize);
+			copy(data.begin() + readSoFar, data.begin() + end, back_inserter(buffer));
+			buffer.resize(i == 0 ? firstBlockSize : otherBlockSize);
 
-			auto thisTypeAndSize = setTypeSize(DataBlock, end - i * userBlockSize);
+			auto thisTypeAndSize = setTypeSize(DataBlock, end - readSoFar);
 			auto nextBlock		 = i < blocks - 1 ? addresses[i + 1] : storage->empty();
-			auto nextBucket		 = i < blocks - 1 ? storage->empty() : next;
-			auto numbers		 = concatNumbers(3, thisTypeAndSize, nextBlock, nextBucket);
+			bytes numbers;
+			if (i == 0)
+			{
+				numbers = concatNumbers(3, thisTypeAndSize, nextBlock, next);
+			}
+			else
+			{
+				numbers = concatNumbers(2, thisTypeAndSize, nextBlock);
+			}
+
 			storage->set(
 				addresses[i],
 				concat(2, &numbers, &buffer));
+
+			readSoFar = end;
 		}
 
 		return addresses[0];
@@ -207,12 +220,15 @@ namespace BPlusTree
 	{
 		bytes data;
 		auto address = storage->empty();
+		number nextBucket;
 
 		while (true)
 		{
-			auto read = address == storage->empty() ? block : storage->get(address);
+			auto first = address == storage->empty();
 
-			auto deconstructed = deconstruct(read, {3 * sizeof(number)});
+			auto read = first ? block : storage->get(address);
+
+			auto deconstructed = deconstruct(read, {(first ? 3 : 2) * (int)sizeof(number)});
 			auto numbers	   = deconstructNumbers(deconstructed[0]);
 			auto blockData	 = deconstructed[1];
 
@@ -221,10 +237,12 @@ namespace BPlusTree
 			{
 				throw Exception("attempt to read a non-data block as data block");
 			}
+			auto nextBlock = numbers[1];
 
-			auto nextBlock  = numbers[1];
-			auto nextBucket = numbers[2];
-
+			if (first)
+			{
+				nextBucket = numbers[2];
+			}
 			blockData.resize(thisSize);
 			data = concat(2, &data, &blockData);
 
