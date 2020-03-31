@@ -17,6 +17,7 @@ namespace BPlusTree
 	{
 		public:
 		vector<bytes> search(number key);
+		vector<bytes> search(number start, number end);
 
 		Tree(AbsStorageAdapter *storage);
 		Tree(AbsStorageAdapter *storage, vector<pair<number, bytes>> data);

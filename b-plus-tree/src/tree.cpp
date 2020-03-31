@@ -52,6 +52,11 @@ namespace BPlusTree
 
 	vector<bytes> Tree::search(number key)
 	{
+		return search(key, key);
+	}
+
+	vector<bytes> Tree::search(number start, number end)
+	{
 		auto address = root;
 		while (true)
 		{
@@ -64,7 +69,7 @@ namespace BPlusTree
 					address	= storage->empty();
 					for (unsigned int i = 0; i < block.size(); i++)
 					{
-						if (key <= block[i].first)
+						if (start <= block[i].first)
 						{
 							address = block[i].second;
 							break;
@@ -83,7 +88,7 @@ namespace BPlusTree
 					while (true)
 					{
 						auto block = readDataBlock(read);
-						if (get<1>(block) != key || get<2>(block) == storage->empty())
+						if (get<1>(block) < start || get<1>(block) > end || get<2>(block) == storage->empty())
 						{
 							return result;
 						}

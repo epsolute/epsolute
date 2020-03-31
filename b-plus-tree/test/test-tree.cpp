@@ -264,6 +264,37 @@ namespace BPlusTree
 		delete tree;
 	}
 
+	TEST_F(TreeTest, BasicSearchRangeDuplicates)
+	{
+		const auto start	  = 8uLL;
+		const auto end		  = 11uLL;
+		const auto duplicates = 3;
+
+		auto data = populateTree(5, 15, 100, duplicates);
+
+		auto returned = tree->search(start, end);
+		vector<bytes> expected;
+		auto i = data.begin();
+		while (i != data.end())
+		{
+			i = find_if(
+				i,
+				data.end(),
+				[](const pair<number, bytes>& val) {
+					return val.first >= start && val.first <= end;
+				});
+			if (i != data.end())
+			{
+				auto element = (*i).second;
+				expected.push_back(element);
+				i++;
+			}
+		}
+		ASSERT_EQ(expected, returned);
+
+		delete tree;
+	}
+
 	TEST_F(TreeTest, ConsistencyCheck)
 	{
 		populateTree();
