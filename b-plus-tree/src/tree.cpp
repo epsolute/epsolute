@@ -17,6 +17,11 @@ namespace BPlusTree
 		storage(storage)
 	{
 		b = (storage->getBlockSize() - sizeof(number)) / (2 * sizeof(number));
+		if (b < 2)
+		{
+			throw Exception("storage block size too small for the tree");
+			// TEST
+		}
 	}
 
 	// TODO enable for signed
@@ -113,7 +118,7 @@ namespace BPlusTree
 		{
 			vector<pair<number, number>> block;
 			block.resize(b);
-			number max = 0uLL; // TODO signed
+			number max = 0uLL;
 			for (unsigned int j = 0; j < b; j++)
 			{
 				if (i + j < input.size())

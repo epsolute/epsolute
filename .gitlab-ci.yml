@@ -66,15 +66,15 @@ benchmarks:
   tags:
     - docker
 
-# shared-library:
-#   image: dbogatov/docker-images:pbc-latest
-#   stage: test
-#   script:
-#     - cd ./b-plus-tree/
-#     - make shared ldconfig run-shared-lib
-#   dependencies: []
-#   tags:
-#     - docker
+shared-library:
+  image: dbogatov/docker-images:pbc-latest
+  stage: test
+  script:
+    - cd ./b-plus-tree/
+    - make shared ldconfig run-shared-lib
+  dependencies: []
+  tags:
+    - docker
 
 docs-website:
   variables:
