@@ -32,39 +32,39 @@ build-docs:
   tags:
     - docker
 
-# unit-test:
-#   image: dbogatov/docker-images:pbc-latest
-#   stage: test
-#   script:
-#     - cd ./b-plus-tree/
-#     - make coverage
-#   dependencies: []
-#   artifacts:
-#     expire_in: 1 day
-#     paths:
-#       - ./b-plus-tree/coverage-html/
-#   tags:
-#     - docker
+unit-test:
+  image: dbogatov/docker-images:pbc-latest
+  stage: test
+  script:
+    - cd ./b-plus-tree/
+    - make coverage
+  dependencies: []
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - ./b-plus-tree/coverage-html/
+  tags:
+    - docker
 
-# integration-test:
-#   image: dbogatov/docker-images:pbc-latest
-#   stage: test
-#   script:
-#     - cd ./b-plus-tree/
-#     - make run-integration
-#   dependencies: []
-#   tags:
-#     - docker
+integration-test:
+  image: dbogatov/docker-images:pbc-latest
+  stage: test
+  script:
+    - cd ./b-plus-tree/
+    - make run-integration
+  dependencies: []
+  tags:
+    - docker
 
-# benchmarks:
-#   image: dbogatov/docker-images:pbc-latest
-#   stage: test
-#   script:
-#     - cd ./b-plus-tree/
-#     - make run-benchmarks
-#   dependencies: []
-#   tags:
-#     - docker
+benchmarks:
+  image: dbogatov/docker-images:pbc-latest
+  stage: test
+  script:
+    - cd ./b-plus-tree/
+    - make run-benchmarks
+  dependencies: []
+  tags:
+    - docker
 
 # shared-library:
 #   image: dbogatov/docker-images:pbc-latest
