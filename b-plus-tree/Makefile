@@ -128,4 +128,4 @@ clean-binaries:
 .PHONY: docs clean clean-docs clean-binaries coverage
 .PHONY: profile debug cleandebug
 .PHONY: binaries all shared
-.PHONY: run-tests run-integration run-benchmarks run-shared-lib
+.PHONY: run-tests run-integration run-benchmarks run-shared-lib run-tests-junit
