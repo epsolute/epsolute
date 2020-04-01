@@ -149,7 +149,7 @@ namespace BPlusTree
 				throw Exception(str(boost::format("TestingStorageAdapterType %1% is not implemented") % type));
 		}
 
-		return Exception(boost::format("%1%i%2%i%3%") % blockSize % count % typeStr);
+		return boost::str(boost::format("%1%i%2%i%3%") % blockSize % count % typeStr);
 	}
 
 	vector<tuple<number, number, TestingStorageAdapterType>> cases()
