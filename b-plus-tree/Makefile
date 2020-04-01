@@ -34,7 +34,7 @@ OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 TESTS = $(ENTITIES)
 TESTBIN = $(addprefix $(BDIR)/test-, $(TESTS))
 
-BENCHMARKS = # TODO
+BENCHMARKS = tree
 BENCHMARKSBIN = $(addprefix $(BDIR)/benchmark-, $(BENCHMARKS))
 
 INTEGRATION = tree-big
