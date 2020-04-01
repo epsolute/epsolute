@@ -38,11 +38,9 @@
 			"type": "pickString",
 			"description": "Pick the benchmark file to debug",
 			"options": [
-				"storage-adapter",
-				"utility",
-				"oram",
+				"tree"
 			],
-			"default": "oram"
+			"default": "tree"
 		}
 	]
 }
