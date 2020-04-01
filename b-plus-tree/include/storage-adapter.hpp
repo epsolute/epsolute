@@ -9,24 +9,68 @@ namespace BPlusTree
 {
 	using namespace std;
 
+	/**
+	 * @brief Abstraction over secondary storage (modeled as RAM)
+	 *
+	 */
 	class AbsStorageAdapter
 	{
 		public:
-		virtual bytes get(number location)			  = 0;
-		virtual void set(number location, bytes data) = 0;
-		virtual number malloc()						  = 0;
+		/**
+		 * @brief reads one block of bytes from the address
+		 *
+		 * @param location the address from which to read
+		 * @return bytes the bytes read, one block
+		 */
+		virtual bytes get(number location) = 0;
 
+		/**
+		 * @brief write one block of bytes to the address
+		 *
+		 * @param location the address to which to write
+		 * @param data the block of bytes to write (must be of block size)
+		 */
+		virtual void set(number location, bytes data) = 0;
+
+		/**
+		 * @brief request an address to which it isi possible to write a block
+		 *
+		 * @return number the allocated address.
+		 * Guaranteed to be writable and not to overalp with previously allocated
+		 */
+		virtual number malloc() = 0;
+
+		/**
+		 * @brief gives the "empty" address, so that the logic can check for "null pointers"
+		 *
+		 * @return number the "null" address, guaranteed to never be allocated
+		 */
 		virtual number empty() = 0;
 
+		/**
+		 * @brief Construct a new Abs Storage Adapter object
+		 *
+		 * @param blockSize the size of block in bytes (better be enough sized for the B+ tree)
+		 */
 		AbsStorageAdapter(number blockSize);
 		virtual ~AbsStorageAdapter() = 0;
 
+		/**
+		 * @brief a getter for block size
+		 *
+		 * @return number the size of block in bytes
+		 */
 		number getBlockSize();
 
 		protected:
 		number blockSize;
 	};
 
+	/**
+	 * @brief In-memory implementation of the storage adapter.
+	 *
+	 * Uses a RAM array as the underlying storage.
+	 */
 	class InMemoryStorageAdapter : public AbsStorageAdapter
 	{
 		private:
@@ -49,6 +93,11 @@ namespace BPlusTree
 		number empty() final;
 	};
 
+	/**
+	 * @brief File system implementation of the storage adapter.
+	 *
+	 * Uses a binary file as the underlying storage.
+	 */
 	class FileSystemStorageAdapter : public AbsStorageAdapter
 	{
 		private:

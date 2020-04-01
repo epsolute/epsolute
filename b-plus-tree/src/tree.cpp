@@ -79,6 +79,7 @@ namespace BPlusTree
 					}
 					if (address == storage->empty())
 					{
+						// key is larger than the largest
 						return vector<bytes>();
 					}
 					break;
@@ -92,11 +93,13 @@ namespace BPlusTree
 						auto block = readDataBlock(read);
 						if (get<1>(block) < start || get<1>(block) > end)
 						{
+							// if we have read the block outside of the range, we are done
 							return result;
 						}
 						result.push_back(get<0>(block));
 						if (get<2>(block) == storage->empty())
 						{
+							// if it is the last block in the linked list, we are done
 							return result;
 						}
 						read = checkType(get<2>(block)).second;
@@ -106,16 +109,16 @@ namespace BPlusTree
 		}
 	}
 
-	// TODO document that number of pointers and keys is the same
-
 	vector<pair<number, number>> Tree::pushLayer(vector<pair<number, number>> input)
 	{
 		vector<pair<number, number>> layer;
+		// go in a b increments
 		for (uint i = 0; i < input.size(); i += b)
 		{
 			vector<pair<number, number>> block;
 			block.resize(b);
 			number max = 0uLL;
+			// pack in b-sets
 			for (uint j = 0; j < b; j++)
 			{
 				if (i + j < input.size())
@@ -125,11 +128,13 @@ namespace BPlusTree
 				}
 				else
 				{
+					// if less than b items exist, resize
 					block.resize(j);
 					break;
 				}
 			}
 			auto address = createNodeBlock(block);
+			// keep creating the next (top) layer
 			layer.push_back({max, address});
 		}
 
@@ -143,6 +148,7 @@ namespace BPlusTree
 			throw Exception(boost::format("data size (%1% pairs) is too big for block size (%2%)") % data.size() % (storage->getBlockSize() - sizeof(number)));
 		}
 
+		// pairs and size of the block itself (4 bytes size, 4 bytes type)
 		number numbers[data.size() * 2 + 1];
 
 		numbers[0] = setTypeSize(NodeBlock, data.size() * 2 * sizeof(number));
@@ -191,6 +197,7 @@ namespace BPlusTree
 
 	number Tree::createDataBlock(bytes data, number key, number next)
 	{
+		// different if all fits in a single storage block, or not
 		auto firstBlockSize = storage->getBlockSize() - 4 * sizeof(number);
 		auto otherBlockSize = storage->getBlockSize() - 2 * sizeof(number);
 
@@ -198,6 +205,8 @@ namespace BPlusTree
 			data.size() <= firstBlockSize ?
 				1 :
 				1 + (data.size() - firstBlockSize + otherBlockSize - 1) / otherBlockSize;
+
+		// request necessary addresses in advance
 		vector<number> addresses;
 		addresses.resize(blocks);
 		for (uint i = 0; i < blocks; i++)
@@ -205,6 +214,7 @@ namespace BPlusTree
 			addresses[i] = storage->malloc();
 		}
 
+		// scan data block by block
 		auto readSoFar = 0;
 		for (number i = 0; i < blocks; i++)
 		{
@@ -217,6 +227,7 @@ namespace BPlusTree
 			auto thisTypeAndSize = setTypeSize(DataBlock, end - readSoFar);
 			auto nextBlock		 = i < blocks - 1 ? addresses[i + 1] : storage->empty();
 			bytes numbers;
+			// different for the fist and subsequent blocks
 			if (i == 0)
 			{
 				numbers = concatNumbers(4, thisTypeAndSize, nextBlock, next, key);
@@ -295,6 +306,7 @@ namespace BPlusTree
 
 	void Tree::checkConsistency(number address, number largestKey, bool rightmost)
 	{
+		// helper to throw exception if condition fails
 		auto throwIf = [](bool expression, Exception exception) {
 			if (expression)
 			{
@@ -347,6 +359,12 @@ namespace BPlusTree
 		}
 	}
 
+	/**
+	 * @brief deconstruct the number into type and size
+	 *
+	 * @param typeAndSize the number to break up
+	 * @return pair<BlockType, number> the type and size of the block
+	 */
 	pair<BlockType, number> getTypeSize(number typeAndSize)
 	{
 		number buffer[1]{typeAndSize};
@@ -356,6 +374,13 @@ namespace BPlusTree
 		return {(BlockType)type, (number)size};
 	}
 
+	/**
+	 * @brief compose type and size into number
+	 *
+	 * @param type type of the storage block
+	 * @param size size of the storage block in bytes
+	 * @return number the composition of the arguments as number
+	 */
 	number setTypeSize(BlockType type, number size)
 	{
 		uint buffer[2]{type, (uint)size};

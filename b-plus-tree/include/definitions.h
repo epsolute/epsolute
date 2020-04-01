@@ -19,6 +19,11 @@ namespace BPlusTree
 	using uint   = unsigned int;
 	using bytes  = vector<uchar>;
 
+	/**
+	 * @brief Primitive exception class that passes along the excpetion message
+	 *
+	 * Can consume std::string, C-string and boost::format
+	 */
 	class Exception : public exception
 	{
 		public:
