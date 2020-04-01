@@ -37,7 +37,7 @@ namespace BPlusTree
 			layer[i].second = createDataBlock(
 				data[i].second,
 				data[i].first,
-				(unsigned int)i == data.size() - 1 ? storage->empty() : layer[i + 1].second);
+				(uint)i == data.size() - 1 ? storage->empty() : layer[i + 1].second);
 		}
 		leftmostDataBlock = layer[0].second;
 
@@ -69,7 +69,7 @@ namespace BPlusTree
 				{
 					auto block = readNodeBlock(read);
 					address	   = storage->empty();
-					for (unsigned int i = 0; i < block.size(); i++)
+					for (uint i = 0; i < block.size(); i++)
 					{
 						if (start <= block[i].first)
 						{
@@ -111,12 +111,12 @@ namespace BPlusTree
 	vector<pair<number, number>> Tree::pushLayer(vector<pair<number, number>> input)
 	{
 		vector<pair<number, number>> layer;
-		for (unsigned int i = 0; i < input.size(); i += b)
+		for (uint i = 0; i < input.size(); i += b)
 		{
 			vector<pair<number, number>> block;
 			block.resize(b);
 			number max = 0uLL;
-			for (unsigned int j = 0; j < b; j++)
+			for (uint j = 0; j < b; j++)
 			{
 				if (i + j < input.size())
 				{
@@ -146,7 +146,7 @@ namespace BPlusTree
 		number numbers[data.size() * 2 + 1];
 
 		numbers[0] = setTypeSize(NodeBlock, data.size() * 2 * sizeof(number));
-		for (unsigned int i = 0; i < data.size(); i++)
+		for (uint i = 0; i < data.size(); i++)
 		{
 			numbers[1 + 2 * i]	   = data[i].first;
 			numbers[1 + 2 * i + 1] = data[i].second;
@@ -180,7 +180,7 @@ namespace BPlusTree
 
 		vector<pair<number, number>> result;
 		result.resize(count / 2);
-		for (unsigned int i = 0; i < count / 2; i++)
+		for (uint i = 0; i < count / 2; i++)
 		{
 			result[i].first	 = ((number *)buffer)[2 * i];
 			result[i].second = ((number *)buffer)[2 * i + 1];
@@ -200,7 +200,7 @@ namespace BPlusTree
 				1 + (data.size() - firstBlockSize + otherBlockSize - 1) / otherBlockSize;
 		vector<number> addresses;
 		addresses.resize(blocks);
-		for (unsigned int i = 0; i < blocks; i++)
+		for (uint i = 0; i < blocks; i++)
 		{
 			addresses[i] = storage->malloc();
 		}
@@ -312,7 +312,7 @@ namespace BPlusTree
 					(block.size() < b / 2 && !rightmost) || block.size() == 0,
 					Exception(boost::format("block undeflow (%1%) for b = %2% and block is not the rightmost") % block.size() % b));
 
-				for (unsigned int i = 0; i < block.size(); i++)
+				for (uint i = 0; i < block.size(); i++)
 				{
 					if (i != 0)
 					{
@@ -350,15 +350,15 @@ namespace BPlusTree
 	pair<BlockType, number> getTypeSize(number typeAndSize)
 	{
 		number buffer[1]{typeAndSize};
-		auto type = ((unsigned int *)buffer)[0];
-		auto size = ((unsigned int *)buffer)[1];
+		auto type = ((uint *)buffer)[0];
+		auto size = ((uint *)buffer)[1];
 
 		return {(BlockType)type, (number)size};
 	}
 
 	number setTypeSize(BlockType type, number size)
 	{
-		unsigned int buffer[2]{type, (unsigned int)size};
+		uint buffer[2]{type, (uint)size};
 		return ((number *)buffer)[0];
 	}
 }

@@ -81,7 +81,7 @@ namespace BPlusTree
 	{
 		vector<bytes> result;
 		result.resize(stops.size() + 1);
-		for (unsigned int i = 0; i <= stops.size(); i++)
+		for (uint i = 0; i <= stops.size(); i++)
 		{
 			bytes buffer(
 				data.begin() + (i == 0 ? 0 : stops[i - 1]),

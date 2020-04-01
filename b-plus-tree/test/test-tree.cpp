@@ -91,7 +91,7 @@ namespace BPlusTree
 
 		vector<pair<number, number>> pairs;
 		pairs.resize(count);
-		for (unsigned int i = 0; i < count; i++)
+		for (uint i = 0; i < count; i++)
 		{
 			pairs[i].first	= i;
 			pairs[i].second = i * 1000;
@@ -124,7 +124,7 @@ namespace BPlusTree
 		tree = new Tree(storage, data);
 
 		auto current = tree->leftmostDataBlock;
-		for (unsigned int i = from; i <= to; i++)
+		for (uint i = from; i <= to; i++)
 		{
 			auto [type, read] = tree->checkType(current);
 			ASSERT_EQ(DataBlock, type);
@@ -218,7 +218,7 @@ namespace BPlusTree
 
 		auto pushed	 = tree->pushLayer(pairs);
 		auto counter = 0;
-		for (unsigned int i = 0; i < pushed.size(); i++)
+		for (uint i = 0; i < pushed.size(); i++)
 		{
 			auto [type, read] = tree->checkType(pushed[i].second);
 			ASSERT_EQ(NodeBlock, type);
