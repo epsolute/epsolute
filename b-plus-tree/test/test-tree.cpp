@@ -107,6 +107,12 @@ namespace BPlusTree
 		ASSERT_NO_THROW(new Tree(storage, data));
 	}
 
+	TEST_P(TreeTest, BlockSizeTooSmall)
+	{
+		auto storage = new InMemoryStorageAdapter(4 * sizeof(number));
+		ASSERT_THROW_CONTAINS(new Tree(storage, vector<pair<number, bytes>>()), "block size too small");
+	}
+
 	TEST_P(TreeTest, ReadDataLayer)
 	{
 		const auto from = 5;
@@ -174,6 +180,32 @@ namespace BPlusTree
 		auto read = tree->readNodeBlock(block);
 
 		ASSERT_EQ(pairs, read);
+
+		delete tree;
+	}
+
+	TEST_P(TreeTest, ReadWrongNodeBlock)
+	{
+		tree = new Tree(storage);
+
+		auto pairs = generatePairs(BLOCK_SIZE).second;
+
+		auto address = tree->createNodeBlock(pairs);
+		auto block	 = tree->checkType(address).second;
+
+		ASSERT_THROW_CONTAINS(tree->readDataBlock(block), "non-data block");
+
+		delete tree;
+	}
+
+	TEST_P(TreeTest, ReadWrongDataBlock)
+	{
+		populateTree();
+
+		auto address = tree->leftmostDataBlock;
+		auto block	 = tree->checkType(address).second;
+
+		ASSERT_THROW_CONTAINS(tree->readNodeBlock(block), "non-node block");
 
 		delete tree;
 	}
@@ -296,6 +328,28 @@ namespace BPlusTree
 				i++;
 			}
 		}
+		ASSERT_EQ(expected, returned);
+
+		delete tree;
+	}
+
+	TEST_P(TreeTest, BasicSearchAll)
+	{
+		const auto start = 5uLL;
+		const auto end	 = 15uLL;
+
+		auto data = populateTree();
+
+		auto returned = tree->search(start, end);
+		vector<bytes> expected;
+		expected.resize(data.size());
+
+		transform(
+			data.begin(),
+			data.end(),
+			expected.begin(),
+			[](pair<number, bytes> val) { return val.second; });
+
 		ASSERT_EQ(expected, returned);
 
 		delete tree;

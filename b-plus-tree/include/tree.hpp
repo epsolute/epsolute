@@ -51,6 +51,8 @@ namespace BPlusTree
 		friend class TreeTest_ConsistencyCheckWrongBlockType_Test;
 		friend class TreeTest_ConsistencyCheckDataBlockPointer_Test;
 		friend class TreeTest_ConsistencyCheckDataBlockKey_Test;
+		friend class TreeTest_ReadWrongNodeBlock_Test;
+		friend class TreeTest_ReadWrongDataBlock_Test;
 		friend class TreeTestBig_Simulation_Test;
 	};
 }

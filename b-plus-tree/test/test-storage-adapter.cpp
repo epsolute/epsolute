@@ -51,6 +51,12 @@ namespace BPlusTree
 		SUCCEED();
 	}
 
+	TEST_P(StorageAdapterTest, Empty)
+	{
+		auto firstAddress = adapter->malloc();
+		ASSERT_NE(firstAddress, adapter->empty());
+	}
+
 	TEST_P(StorageAdapterTest, NoOverrideFile)
 	{
 		if (GetParam() == StorageAdapterTypeFileSystem)
@@ -82,6 +88,18 @@ namespace BPlusTree
 		}
 	}
 
+	TEST_P(StorageAdapterTest, CannotOpenFile)
+	{
+		if (GetParam() == StorageAdapterTypeFileSystem)
+		{
+			ASSERT_ANY_THROW(new FileSystemStorageAdapter(BLOCK_SIZE, "tmp.bin", false));
+		}
+		else
+		{
+			SUCCEED();
+		}
+	}
+
 	TEST_P(StorageAdapterTest, SetGetNoExceptions)
 	{
 		bytes data;
@@ -96,7 +114,9 @@ namespace BPlusTree
 
 	TEST_P(StorageAdapterTest, InvalidAddress)
 	{
-		ASSERT_ANY_THROW(adapter->set(5uLL, bytes()));
+		bytes data;
+		data.resize(BLOCK_SIZE);
+		ASSERT_ANY_THROW(adapter->set(5uLL, data));
 	}
 
 	TEST_P(StorageAdapterTest, WrongDataSize)

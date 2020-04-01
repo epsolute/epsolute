@@ -20,11 +20,8 @@ namespace BPlusTree
 		if (b < 2)
 		{
 			throw Exception("storage block size too small for the tree");
-			// TODO TEST
 		}
 	}
-
-	// TODO enable for signed
 
 	Tree::Tree(AbsStorageAdapter *storage, vector<pair<number, bytes>> data) :
 		Tree(storage)

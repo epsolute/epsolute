@@ -4,7 +4,6 @@
 #include <boost/format.hpp>
 #include <cstdarg>
 #include <iomanip>
-#include <iostream> // TODO
 #include <sstream>
 #include <vector>
 
