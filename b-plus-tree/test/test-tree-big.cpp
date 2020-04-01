@@ -9,11 +9,18 @@ using namespace std;
 
 namespace BPlusTree
 {
-	class TreeTestBig : public testing::TestWithParam<pair<number, number>>
+	enum TestingStorageAdapterType
+	{
+		StorageAdapterTypeInMemory,
+		StorageAdapterTypeFileSystem
+	};
+
+	class TreeTestBig : public testing::TestWithParam<tuple<number, number, TestingStorageAdapterType>>
 	{
 		public:
 		inline static number BLOCK_SIZE;
 		inline static number COUNT;
+		inline static const string FILE_NAME = "storage.bin";
 
 		protected:
 		Tree* tree;
@@ -22,15 +29,26 @@ namespace BPlusTree
 		~TreeTestBig() override
 		{
 			delete storage;
+			remove(FILE_NAME.c_str());
 		}
 
 		TreeTestBig()
 		{
-			auto [BLOCK_SIZE, COUNT] = GetParam();
-			this->BLOCK_SIZE		 = BLOCK_SIZE;
-			this->COUNT				 = COUNT;
+			auto [BLOCK_SIZE, COUNT, storageType] = GetParam();
+			this->BLOCK_SIZE					  = BLOCK_SIZE;
+			this->COUNT							  = COUNT;
 
-			storage = new InMemoryStorageAdapter(BLOCK_SIZE);
+			switch (storageType)
+			{
+				case StorageAdapterTypeInMemory:
+					storage = new InMemoryStorageAdapter(BLOCK_SIZE);
+					break;
+				case StorageAdapterTypeFileSystem:
+					storage = new FileSystemStorageAdapter(BLOCK_SIZE, FILE_NAME, true);
+					break;
+				default:
+					throw Exception(boost::format("TestingStorageAdapterType %1% is not implemented") % storageType);
+			}
 		}
 	};
 
@@ -114,19 +132,49 @@ namespace BPlusTree
 		EXPECT_EQ(expected, returned);
 	}
 
-	string printTestName(testing::TestParamInfo<pair<number, number>> input)
+	string printTestName(testing::TestParamInfo<tuple<number, number, TestingStorageAdapterType>> input)
 	{
-		return boost::str(boost::format("%1%i%2%") % input.param.first % input.param.second);
+		auto [blockSize, count, type] = input.param;
+		string typeStr;
+
+		switch (type)
+		{
+			case StorageAdapterTypeInMemory:
+				typeStr = "InMemory";
+				break;
+			case StorageAdapterTypeFileSystem:
+				typeStr = "FileSystem";
+				break;
+			default:
+				throw Exception(str(boost::format("TestingStorageAdapterType %1% is not implemented") % type));
+		}
+
+		return Exception(boost::format("%1%i%2%i%3%") % blockSize % count % typeStr);
 	}
 
-	pair<number, number> cases[] = {
-		{64, 10},
-		{64, 500},
-		{128, 500},
-		{256, 500},
+	vector<tuple<number, number, TestingStorageAdapterType>> cases()
+	{
+		vector<number> blockSizes				= {64, 128, 256};
+		vector<number> counts					= {10, 500};
+		vector<TestingStorageAdapterType> types = {StorageAdapterTypeFileSystem, StorageAdapterTypeInMemory};
+
+		vector<tuple<number, number, TestingStorageAdapterType>> result;
+
+		for (auto blockSize : blockSizes)
+		{
+			for (auto count : counts)
+			{
+				for (auto type : types)
+				{
+					result.push_back({blockSize, count, type});
+				}
+			}
+		}
+
+		return result;
 	};
 
-	INSTANTIATE_TEST_SUITE_P(TreeTestBigSuite, TreeTestBig, testing::ValuesIn(cases), printTestName);
+	INSTANTIATE_TEST_SUITE_P(TreeTestBigSuite, TreeTestBig, testing::ValuesIn(cases()), printTestName);
 }
 
 int main(int argc, char** argv)

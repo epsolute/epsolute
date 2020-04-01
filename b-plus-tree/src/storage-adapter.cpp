@@ -1,6 +1,7 @@
 #include "storage-adapter.hpp"
 
 #include <boost/format.hpp>
+#include <cstring>
 
 namespace BPlusTree
 {
@@ -89,7 +90,7 @@ namespace BPlusTree
 		file.open(filename, flags);
 		if (!file)
 		{
-			throw boost::str(boost::format("cannot open %1%: %2%") % filename % strerror(errno));
+			throw Exception(boost::format("cannot open %1%: %2%") % filename % strerror(errno));
 		}
 
 		locationCounter = override ? (number)file.tellg() : blockSize;
