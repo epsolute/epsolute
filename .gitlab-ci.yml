@@ -43,6 +43,8 @@ unit-test:
     expire_in: 1 day
     paths:
       - ./b-plus-tree/coverage-html/
+    reports:
+      junit: junit-*.xml
   tags:
     - docker
 

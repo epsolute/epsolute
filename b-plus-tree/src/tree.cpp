@@ -20,7 +20,7 @@ namespace BPlusTree
 		if (b < 2)
 		{
 			throw Exception("storage block size too small for the tree");
-			// TEST
+			// TODO TEST
 		}
 	}
 

@@ -33,6 +33,7 @@ OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
 TESTS = $(ENTITIES)
 TESTBIN = $(addprefix $(BDIR)/test-, $(TESTS))
+JUNITS= $(foreach test, $(TESTS), bin/test-$(test)?--gtest_output=xml:junit-$(test).xml)
 
 BENCHMARKS = tree
 BENCHMARKSBIN = $(addprefix $(BDIR)/benchmark-, $(BENCHMARKS))
@@ -53,7 +54,7 @@ debug: CPPFLAGS += -g -DTESTING
 debug: binaries
 
 profile: CPPFLAGS += -fprofile-arcs -ftest-coverage -fPIC -O0
-profile: clean run-tests
+profile: clean run-tests-junit
 
 # executables
 
@@ -82,13 +83,17 @@ $(ODIR)/%.o: $(SDIR)/%.cpp $(DEPS)
 
 # some Linuxes do not respect -L flag during execution, so we can modify the system LD path
 ldconfig:
-	echo $(shell pwd)/bin > /etc/ld.so.conf.d/$(LIBNAME)-dev.conf
-	ldconfig
+	@echo $(shell pwd)/bin > /etc/ld.so.conf.d/$(LIBNAME)-dev.conf
+	@ldconfig
 
 # will compile the test against the library (not objects and sources) and will run it
 run-shared-lib: shared
 	$(CC) -o $(BDIR)/test-shared-lib $(TDIR)/test-shared-lib.cpp -I $(IDIR) -L $(BDIR) -l $(LIBNAME) $(CPPFLAGS)
 	$(BDIR)/test-shared-lib
+
+run-tests-junit: CPPFLAGS += -DTESTING
+run-tests-junit: $(TESTBIN)
+	$(subst ?, ,$(addsuffix &&, $(JUNITS))) echo Tests passed!
 
 run-tests: CPPFLAGS += -DTESTING
 run-tests: $(TESTBIN)
@@ -110,7 +115,7 @@ docs: clean-docs
 	doxygen ../Doxyfile
 
 clean: clean-docs clean-binaries
-	$(RM) $(ODIR)/* *~ *.dSYM *.gcov *.gcda *.gcno *.bin coverage-html
+	$(RM) $(ODIR)/* *~ *.dSYM *.gcov *.gcda *.gcno *.bin coverage-html junit-*.xml
 
 clean-docs:
 	$(RM) ../docs
