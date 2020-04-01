@@ -8,26 +8,81 @@ using namespace std;
 
 namespace BPlusTree
 {
-	class StorageAdapterTest : public testing::Test
+	enum TestingStorageAdapterType
+	{
+		StorageAdapterTypeInMemory,
+		StorageAdapterTypeFileSystem
+	};
+
+	class StorageAdapterTest : public testing::TestWithParam<TestingStorageAdapterType>
 	{
 		public:
 		inline static const number BLOCK_SIZE = 32;
+		inline static const string FILE_NAME  = "storage.bin";
 
 		protected:
-		AbsStorageAdapter* adapter = new InMemoryStorageAdapter(BLOCK_SIZE);
+		AbsStorageAdapter* adapter;
+
+		StorageAdapterTest()
+		{
+			auto type = GetParam();
+			switch (type)
+			{
+				case StorageAdapterTypeInMemory:
+					adapter = new InMemoryStorageAdapter(BLOCK_SIZE);
+					break;
+				case StorageAdapterTypeFileSystem:
+					adapter = new FileSystemStorageAdapter(BLOCK_SIZE, FILE_NAME, true);
+					break;
+				default:
+					throw boost::str(boost::format("TestingStorageAdapterType %2% is not implemented") % type);
+			}
+		}
 
 		~StorageAdapterTest() override
 		{
 			delete adapter;
+			remove(FILE_NAME.c_str());
 		}
 	};
 
-	TEST_F(StorageAdapterTest, Initialization)
+	TEST_P(StorageAdapterTest, Initialization)
 	{
 		SUCCEED();
 	}
 
-	TEST_F(StorageAdapterTest, SetGetNoExceptions)
+	TEST_P(StorageAdapterTest, NoOverrideFile)
+	{
+		if (GetParam() == StorageAdapterTypeFileSystem)
+		{
+			auto before		= fromText("before", BLOCK_SIZE);
+			auto after		= fromText("after", BLOCK_SIZE);
+			string filename = "tmp.bin";
+
+			auto storage	   = new FileSystemStorageAdapter(BLOCK_SIZE, filename, true);
+			auto addressBefore = storage->malloc();
+			storage->set(addressBefore, before);
+
+			ASSERT_EQ(before, storage->get(addressBefore));
+
+			delete storage;
+
+			storage			  = new FileSystemStorageAdapter(BLOCK_SIZE, filename, false);
+			auto addressAfter = storage->malloc();
+			storage->set(addressAfter, after);
+
+			ASSERT_EQ(before, storage->get(addressBefore));
+			ASSERT_EQ(after, storage->get(addressAfter));
+
+			remove(filename.c_str());
+		}
+		else
+		{
+			SUCCEED();
+		}
+	}
+
+	TEST_P(StorageAdapterTest, SetGetNoExceptions)
 	{
 		bytes data;
 		data.resize(BLOCK_SIZE);
@@ -39,12 +94,12 @@ namespace BPlusTree
 		});
 	}
 
-	TEST_F(StorageAdapterTest, InvalidAddress)
+	TEST_P(StorageAdapterTest, InvalidAddress)
 	{
 		ASSERT_ANY_THROW(adapter->set(5uLL, bytes()));
 	}
 
-	TEST_F(StorageAdapterTest, WrongDataSize)
+	TEST_P(StorageAdapterTest, WrongDataSize)
 	{
 		auto address = adapter->malloc();
 		bytes data;
@@ -56,7 +111,7 @@ namespace BPlusTree
 		ASSERT_ANY_THROW(adapter->set(address, data));
 	}
 
-	TEST_F(StorageAdapterTest, ReadWhatWasWritten)
+	TEST_P(StorageAdapterTest, ReadWhatWasWritten)
 	{
 		auto data = fromText("hello", BLOCK_SIZE);
 
@@ -66,6 +121,21 @@ namespace BPlusTree
 
 		ASSERT_EQ(data, returned);
 	}
+
+	string printTestName(testing::TestParamInfo<TestingStorageAdapterType> input)
+	{
+		switch (input.param)
+		{
+			case StorageAdapterTypeInMemory:
+				return "InMemory";
+			case StorageAdapterTypeFileSystem:
+				return "FileSystem";
+			default:
+				throw boost::str(boost::format("TestingStorageAdapterType %2% is not implemented") % input.param);
+		}
+	}
+
+	INSTANTIATE_TEST_SUITE_P(StorageAdapterSuite, StorageAdapterTest, testing::Values(StorageAdapterTypeInMemory, StorageAdapterTypeFileSystem), printTestName);
 }
 
 int main(int argc, char** argv)

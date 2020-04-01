@@ -2,6 +2,7 @@
 
 #include "definitions.h"
 
+#include <fstream>
 #include <map>
 
 namespace BPlusTree
@@ -15,7 +16,6 @@ namespace BPlusTree
 		virtual void set(number location, bytes data) = 0;
 		virtual number malloc()						  = 0;
 
-		virtual number start() = 0;
 		virtual number empty() = 0;
 
 		AbsStorageAdapter(number blockSize);
@@ -34,7 +34,7 @@ namespace BPlusTree
 		number locationCounter = ROOT;
 
 		static inline const number EMPTY = 0;
-		static inline const number ROOT  = 1;
+		static inline const number ROOT	 = 1;
 
 		void checkLocation(number location);
 
@@ -46,7 +46,27 @@ namespace BPlusTree
 		void set(number location, bytes data) final;
 		number malloc() final;
 
-		number start() final; // TODO test
-		number empty() final; // TODO test
+		number empty() final;
+	};
+
+	class FileSystemStorageAdapter : public AbsStorageAdapter
+	{
+		private:
+		fstream file;
+		number locationCounter;
+
+		static inline const number EMPTY = 0;
+
+		void checkLocation(number location);
+
+		public:
+		FileSystemStorageAdapter(number blockSize, string filename, bool override);
+		~FileSystemStorageAdapter() final;
+
+		bytes get(number location) final;
+		void set(number location, bytes data) final;
+		number malloc() final;
+
+		number empty() final;
 	};
 }
