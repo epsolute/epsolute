@@ -44,7 +44,7 @@ unit-test:
     paths:
       - ./b-plus-tree/coverage-html/
     reports:
-      junit: junit-*.xml
+      junit: ./b-plus-tree/junit-*.xml
   tags:
     - docker
 
