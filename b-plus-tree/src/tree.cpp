@@ -112,7 +112,7 @@ namespace BPlusTree
 	vector<pair<number, number>> Tree::pushLayer(vector<pair<number, number>> input)
 	{
 		vector<pair<number, number>> layer;
-		// go in a b increments
+		// go in a B-increments
 		for (uint i = 0; i < input.size(); i += b)
 		{
 			vector<pair<number, number>> block;
@@ -145,7 +145,7 @@ namespace BPlusTree
 	{
 		if (storage->getBlockSize() - sizeof(number) < data.size() * 2 * sizeof(number))
 		{
-			throw Exception(boost::format("data size (%1% pairs) is too big for block size (%2%)") % data.size() % (storage->getBlockSize() - sizeof(number)));
+			throw Exception(boost::format("data size (%1% pairs) is too big for the block size (%2%)") % data.size() % (storage->getBlockSize() - sizeof(number)));
 		}
 
 		// pairs and size of the block itself (4 bytes size, 4 bytes type)

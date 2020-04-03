@@ -39,12 +39,14 @@ unit-test:
     - cd ./b-plus-tree/
     - make coverage
   dependencies: []
+  coverage: /^TOTAL.*\s+(\d+\%)$/
   artifacts:
     expire_in: 1 day
     paths:
       - ./b-plus-tree/coverage-html/
     reports:
       junit: ./b-plus-tree/junit-*.xml
+      cobertura: ./b-plus-tree/cobertura.xml
   tags:
     - docker
 
