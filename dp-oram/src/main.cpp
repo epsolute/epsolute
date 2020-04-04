@@ -1,23 +1,25 @@
 #include "b-plus-tree/tree.hpp"
 #include "b-plus-tree/utility.hpp"
+#include "definitions.h"
 #include "path-oram/oram.hpp"
 #include "path-oram/utility.hpp"
 
 #include <iostream>
 
 using namespace std;
-using namespace BPlusTree;
-using namespace PathORAM;
+using namespace DPORAM;
 
 int main()
 {
 	cout << "constructing data set" << endl;
 
-	const auto COUNT			 = 500;
-	const auto ORAM_BLOCK_SIZE	 = 256;
-	const auto ORAM_LOG_CAPACITY = 10;
-	const auto ORAM_Z			 = 3;
-	const auto TREE_BLOCK_SIZE	 = 64;
+	const auto OVERRIDE = true;
+
+	const auto COUNT			 = 1000uLL;
+	const auto ORAM_BLOCK_SIZE	 = 256uLL;
+	const auto ORAM_LOG_CAPACITY = 10uLL;
+	const auto ORAM_Z			 = 3uLL;
+	const auto TREE_BLOCK_SIZE	 = 64uLL;
 
 	vector<pair<number, bytes>> data;
 	for (number i = 0; i < COUNT; i++)
@@ -25,7 +27,19 @@ int main()
 		data.push_back({i, PathORAM::fromText(to_string(i), ORAM_BLOCK_SIZE)});
 	}
 
-	auto oram = new ORAM(ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z); // TODO use FS
+	auto oramKey = bytes();
+	oramKey.resize(32);
+
+	auto oramStorage	 = new PathORAM::FileSystemStorageAdapter(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, "oram.bin", OVERRIDE);
+	auto oramPositionMap = new PathORAM::InMemoryPositionMapAdapter(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z);
+	auto oramStash		 = new PathORAM::InMemoryStashAdapter(3 * ORAM_LOG_CAPACITY * ORAM_Z);
+	auto oram			 = new PathORAM::ORAM(
+		   ORAM_LOG_CAPACITY,
+		   ORAM_BLOCK_SIZE,
+		   ORAM_Z,
+		   oramStorage,
+		   oramPositionMap,
+		   oramStash);
 
 	for (auto record : data)
 	{
@@ -38,18 +52,22 @@ int main()
 		index.push_back({record.first, BPlusTree::bytesFromNumber(record.first)});
 	}
 
-	auto treeStorage = new BPlusTree::InMemoryStorageAdapter(TREE_BLOCK_SIZE);
-	auto tree		 = new Tree(treeStorage, index);
+	auto treeStorage = new BPlusTree::FileSystemStorageAdapter(TREE_BLOCK_SIZE, "tree.bin", OVERRIDE);
+	auto tree		 = OVERRIDE ? new BPlusTree::Tree(treeStorage, index) : new BPlusTree::Tree(treeStorage);
 
 	// query
-	const auto QUERY = 50;
+	const auto QUERY = 5;
 	auto oramId		 = BPlusTree::numberFromBytes(tree->search(QUERY)[0]);
 	auto block		 = oram->get(oramId);
 	auto result		 = PathORAM::toText(block, ORAM_BLOCK_SIZE);
 
 	cout << "For query " << QUERY << " the result is " << result << endl;
 
+	delete oramStorage;
+	delete oramPositionMap;
+	delete oramStash;
 	delete oram;
+
 	delete treeStorage;
 	delete tree;
 
