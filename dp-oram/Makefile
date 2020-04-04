@@ -16,13 +16,13 @@ CPPFLAGS= --std=c++17 -Wall -Wno-unknown-pragmas -fPIC
 CC=g++
 RM=rm -rf
 
-LIBNAME=bplustree
+LIBNAME=dporam
 
 # if you follow the convention that for each class CLASS you have a header in
 # $(IDIR)/CLASS.hpp, a code in $(SDIR)/CLASS.cpp and a test in $(TDIR)/test-CLASS.cpp,
 # then the rest will magically work - it will compile each class and test and will run the tests.
 # CLASS does not even have to be a class in C++.
-ENTITIES = storage-adapter utility tree
+ENTITIES =
 
 # dependencies - definitions plus header files
 _DEPS = definitions.h $(addsuffix .hpp, $(ENTITIES))
@@ -31,14 +31,17 @@ DEPS = $(patsubst %, $(IDIR)/%, $(_DEPS))
 _OBJ = $(addsuffix .o, $(ENTITIES))
 OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
+TARGETS = main
+TARGETBIN = $(addprefix $(BDIR)/, $(TARGETS))
+
 TESTS = $(ENTITIES)
 TESTBIN = $(addprefix $(BDIR)/test-, $(TESTS))
 JUNITS= $(foreach test, $(TESTS), bin/test-$(test)?--gtest_output=xml:junit-$(test).xml)
 
-BENCHMARKS = tree
+BENCHMARKS =
 BENCHMARKSBIN = $(addprefix $(BDIR)/benchmark-, $(BENCHMARKS))
 
-INTEGRATION = tree-big
+INTEGRATION =
 INTEGRATIONBIN = $(addprefix $(BDIR)/test-, $(INTEGRATION))
 
 ENTRYPOINTCC = $(CC) -o $@ $^ $(CPPFLAGS) $(INCLUDES) $(LDLIBS) $(LDTESTLIBS) $(LDFLAGS)
@@ -57,6 +60,10 @@ profile: CPPFLAGS += -fprofile-arcs -ftest-coverage -fPIC -O0
 profile: clean run-tests-junit
 
 # executables
+
+.SECONDEXPANSION:
+$(TARGETBIN): $(OBJ) $$(subst $$(BDIR), $(SDIR), $$@).cpp
+	$(ENTRYPOINTCC)
 
 .SECONDEXPANSION:
 $(TESTBIN): $(OBJ) $$(subst $$(BDIR), $(TDIR), $$@).cpp

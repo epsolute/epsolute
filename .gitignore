@@ -11,5 +11,5 @@ cobertura.xml
 coverage-html/
 docs/
 ipch
-b-plus-tree/bin/*
-!b-plus-tree/bin/.gitkeep
+dp-oram/bin/*
+!dp-oram/bin/.gitkeep
