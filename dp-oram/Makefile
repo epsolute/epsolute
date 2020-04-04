@@ -50,7 +50,7 @@ ENTRYPOINTCC = $(CC) -o $@ $^ $(CPPFLAGS) $(INCLUDES) $(LDFLAGS) $(LDLIBS)
 
 all: shared docs
 
-binaries: $(TESTBIN) $(INTEGRATIONBIN) $(BENCHMARKSBIN)
+binaries: $(TARGETBIN) $(TESTBIN) $(INTEGRATIONBIN) $(BENCHMARKSBIN)
 cleandebug: clean debug
 
 debug: CPPFLAGS += -g -DTESTING
