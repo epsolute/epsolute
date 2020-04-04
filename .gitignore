@@ -13,3 +13,5 @@ docs/
 ipch
 dp-oram/bin/*
 !dp-oram/bin/.gitkeep
+dp-oram/lib/*
+!dp-oram/lib/.gitkeep

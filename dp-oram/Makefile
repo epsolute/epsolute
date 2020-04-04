@@ -9,9 +9,9 @@ LDIR=lib
 BDIR=bin
 
 LDFLAGS=-L $(LDIR)
-LDLIBS=-l boost_system # libs for main code
+LDLIBS=-l boost_system -l bplustree -l pathoram # libs for main code
 LDTESTLIBS=-l gtest -l pthread -l benchmark # libs for tests and benchmarks
-INCLUDES=-I $(IDIR)
+INCLUDES=-I $(IDIR) -I $(LDIR)/include
 CPPFLAGS= --std=c++17 -Wall -Wno-unknown-pragmas -fPIC
 CC=g++
 RM=rm -rf
@@ -44,7 +44,7 @@ BENCHMARKSBIN = $(addprefix $(BDIR)/benchmark-, $(BENCHMARKS))
 INTEGRATION =
 INTEGRATIONBIN = $(addprefix $(BDIR)/test-, $(INTEGRATION))
 
-ENTRYPOINTCC = $(CC) -o $@ $^ $(CPPFLAGS) $(INCLUDES) $(LDLIBS) $(LDTESTLIBS) $(LDFLAGS)
+ENTRYPOINTCC = $(CC) -o $@ $^ $(CPPFLAGS) $(INCLUDES) $(LDFLAGS) $(LDLIBS)
 
 # flags-setting commands
 
@@ -118,6 +118,15 @@ coverage: profile
 	mkdir -p coverage-html/
 	gcovr -r . --html --html-details -o coverage-html/index.html
 	gcovr -r . -x -o cobertura.xml
+
+copy-libs-dev:
+	@rm -rf $(LDIR)/*
+	@mkdir -p $(LDIR)/include/{b-plus-tree,path-oram}
+	@cp ../../b-plus-tree/b-plus-tree/bin/libbplustree.so $(LDIR)
+	@cp ../../b-plus-tree/b-plus-tree/include/*.{h,hpp} $(LDIR)/include/b-plus-tree
+	@cp ../../path-oram/path-oram/bin/libpathoram.so $(LDIR)
+	@cp ../../path-oram/path-oram/include/*.{h,hpp} $(LDIR)/include/path-oram
+	@cp $(LDIR)/lib*.so $(BDIR)
 
 docs: clean-docs
 	doxygen ../Doxyfile
