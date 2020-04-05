@@ -9,7 +9,7 @@ LDIR=lib
 BDIR=bin
 
 LDFLAGS=-L $(LDIR)
-LDLIBS=-l boost_system -l bplustree -l pathoram # libs for main code
+LDLIBS=-l boost_system -l boost_program_options -l bplustree -l pathoram # libs for main code
 LDTESTLIBS=-l gtest -l pthread -l benchmark # libs for tests and benchmarks
 INCLUDES=-I $(IDIR) -I $(LDIR)/include
 CPPFLAGS= --std=c++17 -Wall -Wno-unknown-pragmas -fPIC

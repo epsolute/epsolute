@@ -2,45 +2,37 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
-			"name": "Test",
+			"name": "Target",
 			"type": "lldb",
 			"request": "launch",
-			"program": "${workspaceFolder}/b-plus-tree/bin/test-${input:test}",
-			"args": [],
-			"cwd": "${workspaceFolder}/b-plus-tree/",
-			"preLaunchTask": "build"
-		},
-		{
-			"name": "Benchmark",
-			"type": "lldb",
-			"request": "launch",
-			"program": "${workspaceFolder}/b-plus-tree/bin/benchmark-${input:benchmark}",
-			"args": [],
-			"cwd": "${workspaceFolder}/b-plus-tree/",
+			"program": "${workspaceFolder}/dp-oram/bin/${input:target}",
+			"args": [
+				"--generateIndices",
+				"${input:generateIndices}"
+			],
+			"cwd": "${workspaceFolder}/dp-oram/",
 			"preLaunchTask": "build"
 		}
 	],
 	"inputs": [
 		{
-			"id": "test",
+			"id": "target",
 			"type": "pickString",
-			"description": "Pick the test file to debug",
+			"description": "Pick the target file to debug",
 			"options": [
-				"storage-adapter",
-				"utility",
-				"tree",
-				"tree-big"
+				"main"
 			],
-			"default": "tree"
+			"default": "main"
 		},
 		{
-			"id": "benchmark",
+			"id": "generateIndices",
 			"type": "pickString",
-			"description": "Pick the benchmark file to debug",
+			"description": "Pick value for --generateIndices",
 			"options": [
-				"tree"
+				"true",
+				"false"
 			],
-			"default": "tree"
+			"default": "true"
 		}
 	]
 }

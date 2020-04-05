@@ -1,9 +1,12 @@
 #pragma once
 
+#include <boost/algorithm/string.hpp>
 #include <boost/format.hpp>
 #include <climits>
 #include <string>
 #include <vector>
+
+#define KEYSIZE 32
 
 namespace DPORAM
 {
@@ -49,4 +52,41 @@ namespace DPORAM
 		protected:
 		string msg_;
 	};
+
+	enum LOG_LEVEL
+	{
+		TRACE,
+		DEBUG,
+		INFO,
+		WARNING,
+		ERROR,
+		CRITICAL
+	};
+	vector<string> logLevelStrings = {
+		"TRACE",
+		"DEBUG",
+		"INFO",
+		"WARNING",
+		"ERROR",
+		"CRITICAL"};
+
+	std::istream&
+	operator>>(std::istream& in, LOG_LEVEL& level)
+	{
+		string token;
+		in >> token;
+		auto index = find(logLevelStrings.begin(), logLevelStrings.end(), boost::to_upper_copy(token));
+		if (index == logLevelStrings.end())
+		{
+			in.setstate(ios_base::failbit);
+		}
+		else
+		{
+			level = (LOG_LEVEL)distance(logLevelStrings.begin(), index);
+		}
+
+		return in;
+	}
+
+	inline LOG_LEVEL __logLevel;
 }

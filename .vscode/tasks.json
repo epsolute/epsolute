@@ -3,10 +3,10 @@
 	"tasks": [{
 		"label": "build",
 		"type": "shell",
-		"command": "make cleandebug",
+		"command": "make debug",
 		"args": [],
 		"options": {
-			"cwd": "${workspaceFolder}/b-plus-tree"
+			"cwd": "${workspaceFolder}/dp-oram"
 		},
 		"group": {
 			"kind": "build",
