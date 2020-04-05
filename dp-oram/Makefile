@@ -136,6 +136,9 @@ copy-libs:
 	@cp $(LIB_ORAM_DIR)/include/* $(LDIR)/include/path-oram
 	@cp $(LDIR)/lib*.so $(BDIR)
 
+install-libs:
+	cp $(LDIR)/lib*.so /usr/lib/
+
 docs: clean-docs
 	doxygen ../Doxyfile
 

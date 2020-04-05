@@ -9,11 +9,12 @@ build-binaries:
   stage: build
   script:
     - cd ./$PROJECT_DIR
-    - make clean copy-libs binaries
-    - ls -la
-    - cd ./bin
-    - ls -la
-    - ./main
+    - make clean copy-libs install-libs binaries
+    # - ls -la
+    # - cd ./bin
+    # - ls -la
+    # - ./main
+    - ./bin/main
   needs:
     - project: bu/dp-oram/path-oram
       job: release-library
