@@ -1,0 +1,15 @@
+stages:
+  - build
+
+build-binaries:
+  image: dbogatov/docker-images:pbc-latest
+  stage: build
+  script:
+    - cd ./dp-oram
+    - make binaries
+  artifacts:
+    expire_in: 30 min
+    paths:
+      - ./dp-oram/bin
+  tags:
+    - docker

@@ -12,10 +12,46 @@ using namespace DPORAM;
 
 namespace po = boost::program_options;
 
+po::variables_map setupArgs(int argc, char* argv[]);
+void query(PathORAM::ORAM* oram, BPlusTree::Tree* tree, bool query);
+vector<pair<number, bytes>> generateData();
+tuple<PathORAM::AbsStorageAdapter*, PathORAM::AbsPositionMapAdapter*, PathORAM::AbsStashAdapter*, PathORAM::ORAM*, BPlusTree::AbsStorageAdapter*, BPlusTree::Tree*> constructIndices(vector<pair<number, bytes>> data, bool generate);
+
 void LOG(LOG_LEVEL level, string message);
 void LOG(LOG_LEVEL level, boost::format message);
 
+const auto COUNT			 = 1000uLL;
+const auto ORAM_BLOCK_SIZE	 = 256uLL;
+const auto ORAM_LOG_CAPACITY = 10uLL;
+const auto ORAM_Z			 = 3uLL;
+const auto TREE_BLOCK_SIZE	 = 64uLL;
+
+const auto KEY_FILE			 = "key.bin";
+const auto TREE_FILE		 = "tree.bin";
+const auto ORAM_STORAGE_FILE = "oram-storage.bin";
+const auto ORAM_MAP_FILE	 = "oram-map.bin";
+const auto ORAM_STASH_FILE	 = "oram-stash.bin";
+
 int main(int argc, char* argv[])
+{
+	auto vm = setupArgs(argc, argv);
+
+	auto data																= generateData();
+	auto [oramStorage, oramPositionMap, oramStash, oram, treeStorage, tree] = constructIndices(data, vm["generateIndices"].as<bool>());
+	query(oram, tree, vm["query"].as<bool>());
+
+	delete oramStorage;
+	delete oramPositionMap;
+	delete oramStash;
+	delete oram;
+
+	delete treeStorage;
+	delete tree;
+
+	return 0;
+}
+
+po::variables_map setupArgs(int argc, char* argv[])
 {
 	po::options_description desc("range query processor");
 	desc.add_options()("help", "produce help message");
@@ -30,22 +66,32 @@ int main(int argc, char* argv[])
 	if (vm.count("help"))
 	{
 		cout << desc << "\n";
-		return 1;
+		exit(1);
 	}
 
+	return vm;
+}
+
+void query(PathORAM::ORAM* oram, BPlusTree::Tree* tree, bool query)
+{
+	if (query)
+	{
+		const auto QUERY = 5;
+		auto oramId		 = BPlusTree::numberFromBytes(tree->search(QUERY)[0]);
+		auto block		 = oram->get(oramId);
+		auto result		 = PathORAM::toText(block, ORAM_BLOCK_SIZE);
+
+		LOG(INFO, boost::format("For query %1% the result is %2%") % QUERY % result);
+	}
+	else
+	{
+		LOG(INFO, "Query stage skipped...");
+	}
+}
+
+vector<pair<number, bytes>> generateData()
+{
 	LOG(INFO, "Constructing data set...");
-
-	const auto COUNT			 = 1000uLL;
-	const auto ORAM_BLOCK_SIZE	 = 256uLL;
-	const auto ORAM_LOG_CAPACITY = 10uLL;
-	const auto ORAM_Z			 = 3uLL;
-	const auto TREE_BLOCK_SIZE	 = 64uLL;
-
-	const auto KEY_FILE			 = "key.bin";
-	const auto TREE_FILE		 = "tree.bin";
-	const auto ORAM_STORAGE_FILE = "oram-storage.bin";
-	const auto ORAM_MAP_FILE	 = "oram-map.bin";
-	const auto ORAM_STASH_FILE	 = "oram-stash.bin";
 
 	vector<pair<number, bytes>> data;
 	for (number i = 0; i < COUNT; i++)
@@ -53,13 +99,25 @@ int main(int argc, char* argv[])
 		data.push_back({i, PathORAM::fromText(to_string(i), ORAM_BLOCK_SIZE)});
 	}
 
+	return data;
+}
+
+tuple<
+	PathORAM::AbsStorageAdapter*,
+	PathORAM::AbsPositionMapAdapter*,
+	PathORAM::AbsStashAdapter*,
+	PathORAM::ORAM*,
+	BPlusTree::AbsStorageAdapter*,
+	BPlusTree::Tree*>
+constructIndices(vector<pair<number, bytes>> data, bool generate)
+{
 	LOG(INFO,
-		vm["generateIndices"].as<bool>() ?
+		generate ?
 			"Storing data in ORAM and generating B+ tree indices..." :
 			"Reading ORAM and B+ tree data from files...");
 
 	bytes oramKey;
-	if (vm["generateIndices"].as<bool>())
+	if (generate)
 	{
 		oramKey = PathORAM::getRandomBlock(KEYSIZE);
 		PathORAM::storeKey(oramKey, KEY_FILE);
@@ -69,14 +127,14 @@ int main(int argc, char* argv[])
 		oramKey = PathORAM::loadKey(KEY_FILE);
 	}
 
-	auto oramStorage	 = new PathORAM::FileSystemStorageAdapter(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, ORAM_STORAGE_FILE, vm["generateIndices"].as<bool>());
+	auto oramStorage	 = new PathORAM::FileSystemStorageAdapter(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, ORAM_STORAGE_FILE, generate);
 	auto oramPositionMap = new PathORAM::InMemoryPositionMapAdapter(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z);
-	if (!vm["generateIndices"].as<bool>())
+	if (!generate)
 	{
 		oramPositionMap->loadFromFile(ORAM_MAP_FILE);
 	}
 	auto oramStash = new PathORAM::InMemoryStashAdapter(3 * ORAM_LOG_CAPACITY * ORAM_Z);
-	if (!vm["generateIndices"].as<bool>())
+	if (!generate)
 	{
 		oramStash->loadFromFile(ORAM_STASH_FILE, ORAM_BLOCK_SIZE);
 	}
@@ -87,19 +145,19 @@ int main(int argc, char* argv[])
 		oramStorage,
 		oramPositionMap,
 		oramStash,
-		vm["generateIndices"].as<bool>());
+		generate);
 
-	if (vm["generateIndices"].as<bool>())
+	if (generate)
 	{
 		oram->load(data);
 		oramPositionMap->storeToFile(ORAM_MAP_FILE);
 		oramStash->storeToFile(ORAM_STASH_FILE);
 	}
 
-	auto treeStorage = new BPlusTree::FileSystemStorageAdapter(TREE_BLOCK_SIZE, TREE_FILE, vm["generateIndices"].as<bool>());
+	auto treeStorage = new BPlusTree::FileSystemStorageAdapter(TREE_BLOCK_SIZE, TREE_FILE, generate);
 	BPlusTree::Tree* tree;
 
-	if (vm["generateIndices"].as<bool>())
+	if (generate)
 	{
 		vector<pair<number, bytes>> index;
 		for (auto record : data)
@@ -114,30 +172,7 @@ int main(int argc, char* argv[])
 		tree = new BPlusTree::Tree(treeStorage);
 	}
 
-	// query
-	if (vm["query"].as<bool>())
-	{
-		const auto QUERY = 5;
-		auto oramId		 = BPlusTree::numberFromBytes(tree->search(QUERY)[0]);
-		auto block		 = oram->get(oramId);
-		auto result		 = PathORAM::toText(block, ORAM_BLOCK_SIZE);
-
-		LOG(INFO, boost::format("For query %1% the result is %2%") % QUERY % result);
-	}
-	else
-	{
-		LOG(INFO, "Query stage skipped...");
-	}
-
-	delete oramStorage;
-	delete oramPositionMap;
-	delete oramStash;
-	delete oram;
-
-	delete treeStorage;
-	delete tree;
-
-	return 0;
+	return {oramStorage, oramPositionMap, oramStash, oram, treeStorage, tree};
 }
 
 void LOG(LOG_LEVEL level, boost::format message)
