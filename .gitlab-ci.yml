@@ -10,7 +10,7 @@ build-binaries:
   script:
     - cd ./$PROJECT_DIR
     - ls -la ..
-    - make clean copy-libs-dev binaries
+    - make clean copy-libs binaries
   needs:
     - project: bu/dp-oram/path-oram
       job: release-library
