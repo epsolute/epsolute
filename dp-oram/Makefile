@@ -128,7 +128,8 @@ copy-libs-dev: copy-libs
 
 copy-libs:
 	@rm -rf $(LDIR)/*
-	@mkdir -p $(LDIR)/include/{b-plus-tree,path-oram}
+	@mkdir -p $(LDIR)/include/b-plus-tree
+	@mkdir -p $(LDIR)/include/path-oram
 	@cp $(LIB_TREE_DIR)/bin/libbplustree.so $(LDIR)
 	@cp $(LIB_TREE_DIR)/include/* $(LDIR)/include/b-plus-tree
 	@cp $(LIB_ORAM_DIR)/bin/libpathoram.so $(LDIR)
