@@ -9,10 +9,8 @@ build-binaries:
   stage: build
   script:
     - cd ./$PROJECT_DIR
-    - apt-get update
-    - apt-get install tree
-    - tree ..
     - make clean copy-libs binaries
+    - ./bin/main
   needs:
     - project: bu/dp-oram/path-oram
       job: release-library
