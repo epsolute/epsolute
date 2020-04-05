@@ -9,7 +9,6 @@ build-binaries:
   stage: build
   script:
     - cd ./$PROJECT_DIR
-    - ls -la ..
     - make clean copy-libs binaries
   needs:
     - project: bu/dp-oram/path-oram

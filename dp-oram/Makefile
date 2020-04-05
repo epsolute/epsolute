@@ -15,7 +15,9 @@ INCLUDES=-I $(IDIR) -I $(LDIR)/include
 CPPFLAGS= --std=c++17 -Wall -Wno-unknown-pragmas -fPIC
 CC=g++
 RM=rm -rf
-LIBS_TLD=.
+
+LIB_ORAM_DIR=../path-oram
+LIB_TREE_DIR=../b-plus-tree
 
 LIBNAME=dporam
 
@@ -120,16 +122,17 @@ coverage: profile
 	gcovr -r . --html --html-details -o coverage-html/index.html
 	gcovr -r . -x -o cobertura.xml
 
-copy-libs-dev: LIBS_TLD=..
+copy-libs-dev: LIB_ORAM_DIR=../../path-oram/path-oram
+copy-libs-dev: LIB_TREE_DIR=../../b-plus-tree/b-plus-tree
 copy-libs-dev: copy-libs
 
 copy-libs:
 	@rm -rf $(LDIR)/*
 	@mkdir -p $(LDIR)/include/{b-plus-tree,path-oram}
-	@cp $(LIBS_TLD)/../b-plus-tree/b-plus-tree/bin/libbplustree.so $(LDIR)
-	@cp $(LIBS_TLD)/../b-plus-tree/b-plus-tree/include/*.{h,hpp} $(LDIR)/include/b-plus-tree
-	@cp $(LIBS_TLD)/../path-oram/path-oram/bin/libpathoram.so $(LDIR)
-	@cp $(LIBS_TLD)/../path-oram/path-oram/include/*.{h,hpp} $(LDIR)/include/path-oram
+	@cp $(LIB_TREE_DIR)/bin/libbplustree.so $(LDIR)
+	@cp $(LIB_TREE_DIR)/include/*.{h,hpp} $(LDIR)/include/b-plus-tree
+	@cp $(LIB_ORAM_DIR)/bin/libpathoram.so $(LDIR)
+	@cp $(LIB_ORAM_DIR)/include/*.{h,hpp} $(LDIR)/include/path-oram
 	@cp $(LDIR)/lib*.so $(BDIR)
 
 docs: clean-docs
