@@ -130,9 +130,9 @@ copy-libs:
 	@rm -rf $(LDIR)/*
 	@mkdir -p $(LDIR)/include/{b-plus-tree,path-oram}
 	@cp $(LIB_TREE_DIR)/bin/libbplustree.so $(LDIR)
-	@cp $(LIB_TREE_DIR)/include/*.{h,hpp} $(LDIR)/include/b-plus-tree
+	@cp $(LIB_TREE_DIR)/include/* $(LDIR)/include/b-plus-tree
 	@cp $(LIB_ORAM_DIR)/bin/libpathoram.so $(LDIR)
-	@cp $(LIB_ORAM_DIR)/include/*.{h,hpp} $(LDIR)/include/path-oram
+	@cp $(LIB_ORAM_DIR)/include/* $(LDIR)/include/path-oram
 	@cp $(LDIR)/lib*.so $(BDIR)
 
 docs: clean-docs
