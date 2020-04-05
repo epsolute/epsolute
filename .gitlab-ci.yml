@@ -9,6 +9,8 @@ build-binaries:
   stage: build
   script:
     - cd ./$PROJECT_DIR
+    - apk add --update tree
+    - tree ..
     - make clean copy-libs binaries
   needs:
     - project: bu/dp-oram/path-oram
