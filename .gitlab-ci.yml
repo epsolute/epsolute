@@ -1,15 +1,24 @@
 stages:
   - build
 
+variables:
+  PROJECT_DIR: "dp-oram"
+
 build-binaries:
   image: dbogatov/docker-images:pbc-latest
   stage: build
   script:
-    - cd ./dp-oram
-    - make binaries
-  artifacts:
-    expire_in: 30 min
-    paths:
-      - ./dp-oram/bin
+    - cd ./$PROJECT_DIR
+    - ls -la ..
+    - make clean copy-libs-dev binaries
+  needs:
+    - project: bu/dp-oram/path-oram
+      job: release-library
+      ref: master
+      artifacts: true
+    - project: bu/dp-oram/b-plus-tree
+      job: release-library
+      ref: master
+      artifacts: true
   tags:
     - docker
