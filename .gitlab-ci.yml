@@ -9,7 +9,8 @@ build-binaries:
   stage: build
   script:
     - cd ./$PROJECT_DIR
-    - apk add --update tree
+    - apt-get update
+    - apt-get install tree
     - tree ..
     - make clean copy-libs binaries
   needs:
