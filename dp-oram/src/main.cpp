@@ -6,8 +6,10 @@
 
 #include <boost/program_options.hpp>
 #include <ctime>
+#include <future>
 #include <iomanip>
 #include <iostream>
+#include <thread>
 
 using namespace std;
 using namespace DPORAM;
@@ -30,6 +32,7 @@ auto COUNT				   = 1000uLL;
 auto ORAM_BLOCK_SIZE	   = 256uLL;
 auto ORAM_LOG_CAPACITY	   = 10uLL;
 auto ORAMS_NUMBER		   = 1;
+auto PARALLEL			   = true;
 const auto ORAM_Z		   = 3uLL;
 const auto TREE_BLOCK_SIZE = 64uLL;
 
@@ -61,6 +64,7 @@ int main(int argc, char* argv[])
 	LOG(INFO, boost::format("ORAM_BLOCK_SIZE = %1%") % ORAM_BLOCK_SIZE);
 	LOG(INFO, boost::format("ORAM_LOG_CAPACITY = %1%") % ORAM_LOG_CAPACITY);
 	LOG(INFO, boost::format("ORAMS_NUMBER = %1%") % ORAMS_NUMBER);
+	LOG(INFO, boost::format("PARALLEL = %1%") % PARALLEL);
 	LOG(INFO, boost::format("ORAM_Z = %1%") % ORAM_Z);
 	LOG(INFO, boost::format("TREE_BLOCK_SIZE = %1%") % TREE_BLOCK_SIZE);
 
@@ -90,6 +94,7 @@ po::variables_map setupArgs(int argc, char* argv[])
 	desc.add_options()("help", "produce help message");
 	desc.add_options()("generateIndices", po::value<bool>()->default_value(true), "if set, will generate ORAM and tree indices, otherwise will read files");
 	desc.add_options()("readInputs", po::value<bool>()->default_value(true), "if set, will read inputs from files");
+	desc.add_options()("parallel", po::value<bool>(&PARALLEL)->default_value(true), "if set, will query orams in parallel");
 	desc.add_options()("oramsNumber", po::value<int>(&ORAMS_NUMBER)->notifier([](int v) { if (v < 1 || v > 16) { throw Exception("malformed --oramsNumber"); } })->default_value(1), "the number of parallel ORAMs to use");
 	desc.add_options()("verbosity", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 
@@ -110,17 +115,60 @@ void query(vector<PathORAM::ORAM*> orams, BPlusTree::Tree* tree, vector<pair<num
 {
 	LOG(INFO, boost::format("Running %1% queries...") % queries.size());
 
+	auto queryOram = [](vector<number> ids, PathORAM::ORAM* oram, promise<vector<bytes>>* promise) -> vector<bytes> {
+		vector<bytes> answer;
+		for (auto id : ids)
+		{
+			auto block = oram->get(id);
+			answer.push_back(block);
+		}
+
+		if (promise != NULL)
+		{
+			promise->set_value(answer);
+		}
+
+		return answer;
+	};
+
 	for (auto query : queries)
 	{
 		auto oramIds = tree->search(query.first, query.second);
-		auto count	 = 0;
+		vector<vector<number>> blockIds;
+		blockIds.resize(ORAMS_NUMBER);
 		for (auto oramId : oramIds)
 		{
-			// TODO parallel
 			auto blockId = BPlusTree::numberFromBytes(oramId);
-			auto block	 = orams[blockId % ORAMS_NUMBER]->get(blockId / ORAMS_NUMBER);
-			auto result	 = PathORAM::toText(block, ORAM_BLOCK_SIZE);
-			count++;
+			blockIds[blockId % ORAMS_NUMBER].push_back(blockId / ORAMS_NUMBER);
+		}
+
+		auto count = 0;
+		if (PARALLEL)
+		{
+			thread threads[ORAMS_NUMBER];
+			promise<vector<bytes>> promises[ORAMS_NUMBER];
+			future<vector<bytes>> futures[ORAMS_NUMBER];
+
+			for (auto i = 0; i < ORAMS_NUMBER; i++)
+			{
+				futures[i] = promises[i].get_future();
+				threads[i] = thread(queryOram, blockIds[i], orams[i], &promises[i]);
+			}
+
+			for (auto i = 0; i < ORAMS_NUMBER; i++)
+			{
+				auto result = futures[i].get();
+				threads[i].join();
+				count += result.size();
+			}
+		}
+		else
+		{
+			for (auto i = 0; i < ORAMS_NUMBER; i++)
+			{
+				auto result = queryOram(blockIds[i], orams[i], NULL);
+				count += result.size();
+			}
 		}
 
 		LOG(TRACE, boost::format("For query {%1%, %2%} the result size is %3%") % numberToSalary(query.first) % numberToSalary(query.second) % count);

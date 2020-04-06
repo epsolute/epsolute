@@ -10,7 +10,7 @@ build-binaries:
   script:
     - cd ./$PROJECT_DIR
     - make clean copy-libs install-libs binaries
-    - ./bin/main --readInputs false
+    - ./bin/main --readInputs false --oramsNumber 4
   needs:
     - project: bu/dp-oram/path-oram
       job: release-library
