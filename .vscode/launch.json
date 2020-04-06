@@ -8,7 +8,9 @@
 			"program": "${workspaceFolder}/dp-oram/bin/${input:target}",
 			"args": [
 				"--generateIndices",
-				"${input:generateIndices}"
+				"${input:generateIndices}",
+				"--readInputs",
+				"${input:readInputs}"
 			],
 			"cwd": "${workspaceFolder}/dp-oram/",
 			"preLaunchTask": "build"
@@ -33,6 +35,16 @@
 				"false"
 			],
 			"default": "true"
+		},
+		{
+			"id": "readInputs",
+			"type": "pickString",
+			"description": "Pick value for --readInputs",
+			"options": [
+				"true",
+				"false"
+			],
+			"default": "false"
 		}
 	]
 }

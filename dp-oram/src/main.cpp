@@ -15,12 +15,13 @@ using namespace DPORAM;
 namespace po = boost::program_options;
 
 po::variables_map setupArgs(int argc, char* argv[]);
-void query(PathORAM::ORAM* oram, BPlusTree::Tree* tree, vector<pair<number, number>> queries);
+void query(vector<PathORAM::ORAM*> orams, BPlusTree::Tree* tree, vector<pair<number, number>> queries);
 tuple<vector<pair<number, bytes>>, vector<pair<number, bytes>>, vector<pair<number, number>>> generateData(bool read);
-tuple<PathORAM::AbsStorageAdapter*, PathORAM::AbsPositionMapAdapter*, PathORAM::AbsStashAdapter*, PathORAM::ORAM*, BPlusTree::AbsStorageAdapter*, BPlusTree::Tree*> constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, bytes>> treeIndex, bool generate);
+tuple<vector<ORAMSet>, BPlusTree::AbsStorageAdapter*, BPlusTree::Tree*> constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, bytes>> treeIndex, bool generate);
 
 number salaryToNumber(string salary);
 double numberToSalary(number salary);
+string filename(string filename, int i);
 
 void LOG(LOG_LEVEL level, string message);
 void LOG(LOG_LEVEL level, boost::format message);
@@ -28,14 +29,15 @@ void LOG(LOG_LEVEL level, boost::format message);
 auto COUNT				   = 1000uLL;
 auto ORAM_BLOCK_SIZE	   = 256uLL;
 auto ORAM_LOG_CAPACITY	   = 10uLL;
+auto ORAMS_NUMBER		   = 1;
 const auto ORAM_Z		   = 3uLL;
 const auto TREE_BLOCK_SIZE = 64uLL;
 
-const auto KEY_FILE			 = "key.bin";
-const auto TREE_FILE		 = "tree.bin";
-const auto ORAM_STORAGE_FILE = "oram-storage.bin";
-const auto ORAM_MAP_FILE	 = "oram-map.bin";
-const auto ORAM_STASH_FILE	 = "oram-stash.bin";
+const auto KEY_FILE			 = "key";
+const auto TREE_FILE		 = "tree";
+const auto ORAM_STORAGE_FILE = "oram-storage";
+const auto ORAM_MAP_FILE	 = "oram-map";
+const auto ORAM_STASH_FILE	 = "oram-stash";
 
 const auto DATA_FILE  = "../../experiments-scripts/scripts/data.csv";
 const auto QUERY_FILE = "../../experiments-scripts/scripts/query.csv";
@@ -58,18 +60,23 @@ int main(int argc, char* argv[])
 	LOG(INFO, boost::format("COUNT = %1%") % COUNT);
 	LOG(INFO, boost::format("ORAM_BLOCK_SIZE = %1%") % ORAM_BLOCK_SIZE);
 	LOG(INFO, boost::format("ORAM_LOG_CAPACITY = %1%") % ORAM_LOG_CAPACITY);
+	LOG(INFO, boost::format("ORAMS_NUMBER = %1%") % ORAMS_NUMBER);
 	LOG(INFO, boost::format("ORAM_Z = %1%") % ORAM_Z);
 	LOG(INFO, boost::format("TREE_BLOCK_SIZE = %1%") % TREE_BLOCK_SIZE);
 
-	auto [oramStorage, oramPositionMap, oramStash, oram, treeStorage, tree] = constructIndices(oramIndex, treeIndex, vm["generateIndices"].as<bool>());
-	query(oram, tree, queries);
+	auto [oramSets, treeStorage, tree] = constructIndices(oramIndex, treeIndex, vm["generateIndices"].as<bool>());
+
+	vector<PathORAM::ORAM*> orams;
+	orams.resize(oramSets.size());
+	transform(oramSets.begin(), oramSets.end(), orams.begin(), [](ORAMSet val) { return get<3>(val); });
+	query(orams, tree, queries);
 
 	LOG(INFO, "Complete!");
 
-	delete oramStorage;
-	delete oramPositionMap;
-	delete oramStash;
-	delete oram;
+	for (auto set : oramSets)
+	{
+		apply([](auto&&... args) { ((delete args), ...); }, set);
+	}
 
 	delete treeStorage;
 	delete tree;
@@ -83,6 +90,7 @@ po::variables_map setupArgs(int argc, char* argv[])
 	desc.add_options()("help", "produce help message");
 	desc.add_options()("generateIndices", po::value<bool>()->default_value(true), "if set, will generate ORAM and tree indices, otherwise will read files");
 	desc.add_options()("readInputs", po::value<bool>()->default_value(true), "if set, will read inputs from files");
+	desc.add_options()("oramsNumber", po::value<int>(&ORAMS_NUMBER)->notifier([](int v) { if (v < 1 || v > 16) { throw Exception("malformed --oramsNumber"); } })->default_value(1), "the number of parallel ORAMs to use");
 	desc.add_options()("verbosity", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 
 	po::variables_map vm;
@@ -98,7 +106,7 @@ po::variables_map setupArgs(int argc, char* argv[])
 	return vm;
 }
 
-void query(PathORAM::ORAM* oram, BPlusTree::Tree* tree, vector<pair<number, number>> queries)
+void query(vector<PathORAM::ORAM*> orams, BPlusTree::Tree* tree, vector<pair<number, number>> queries)
 {
 	LOG(INFO, boost::format("Running %1% queries...") % queries.size());
 
@@ -108,8 +116,10 @@ void query(PathORAM::ORAM* oram, BPlusTree::Tree* tree, vector<pair<number, numb
 		auto count	 = 0;
 		for (auto oramId : oramIds)
 		{
-			auto block	= oram->get(BPlusTree::numberFromBytes(oramId));
-			auto result = PathORAM::toText(block, ORAM_BLOCK_SIZE);
+			// TODO parallel
+			auto blockId = BPlusTree::numberFromBytes(oramId);
+			auto block	 = orams[blockId % ORAMS_NUMBER]->get(blockId / ORAMS_NUMBER);
+			auto result	 = PathORAM::toText(block, ORAM_BLOCK_SIZE);
 			count++;
 		}
 
@@ -178,10 +188,7 @@ tuple<vector<pair<number, bytes>>, vector<pair<number, bytes>>, vector<pair<numb
 }
 
 tuple<
-	PathORAM::AbsStorageAdapter*,
-	PathORAM::AbsPositionMapAdapter*,
-	PathORAM::AbsStashAdapter*,
-	PathORAM::ORAM*,
+	vector<ORAMSet>,
 	BPlusTree::AbsStorageAdapter*,
 	BPlusTree::Tree*>
 constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, bytes>> treeIndex, bool generate)
@@ -191,48 +198,60 @@ constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, byte
 			"Storing data in ORAM and generating B+ tree indices..." :
 			"Reading ORAM and B+ tree data from files...");
 
-	bytes oramKey;
-	if (generate)
+	vector<vector<pair<number, bytes>>> oramIndexBrokenUp;
+	oramIndexBrokenUp.resize(ORAMS_NUMBER);
+	for (auto record : oramIndex)
 	{
-		oramKey = PathORAM::getRandomBlock(KEYSIZE);
-		PathORAM::storeKey(oramKey, KEY_FILE);
+		oramIndexBrokenUp[record.first % ORAMS_NUMBER].push_back({record.first / ORAMS_NUMBER, record.second});
 	}
-	else
+	vector<ORAMSet> oramSets;
+	for (auto i = 0; i < ORAMS_NUMBER; i++)
 	{
-		oramKey = PathORAM::loadKey(KEY_FILE);
+		bytes oramKey;
+		if (generate)
+		{
+			oramKey = PathORAM::getRandomBlock(KEYSIZE);
+			PathORAM::storeKey(oramKey, filename(KEY_FILE, i));
+		}
+		else
+		{
+			oramKey = PathORAM::loadKey(filename(KEY_FILE, i));
+		}
+
+		auto oramStorage	 = new PathORAM::FileSystemStorageAdapter(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), generate);
+		auto oramPositionMap = new PathORAM::InMemoryPositionMapAdapter(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z);
+		if (!generate)
+		{
+			oramPositionMap->loadFromFile(filename(ORAM_MAP_FILE, i));
+		}
+		auto oramStash = new PathORAM::InMemoryStashAdapter(3 * ORAM_LOG_CAPACITY * ORAM_Z);
+		if (!generate)
+		{
+			oramStash->loadFromFile(filename(ORAM_STASH_FILE, i), ORAM_BLOCK_SIZE);
+		}
+		auto oram = new PathORAM::ORAM(
+			ORAM_LOG_CAPACITY,
+			ORAM_BLOCK_SIZE,
+			ORAM_Z,
+			oramStorage,
+			oramPositionMap,
+			oramStash,
+			generate);
+
+		if (generate)
+		{
+			oram->load(oramIndexBrokenUp[i]);
+			oramPositionMap->storeToFile(filename(ORAM_MAP_FILE, i));
+			oramStash->storeToFile(filename(ORAM_STASH_FILE, i));
+		}
+
+		oramSets.push_back({oramStorage, oramPositionMap, oramStash, oram});
 	}
 
-	auto oramStorage	 = new PathORAM::FileSystemStorageAdapter(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, ORAM_STORAGE_FILE, generate);
-	auto oramPositionMap = new PathORAM::InMemoryPositionMapAdapter(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z);
-	if (!generate)
-	{
-		oramPositionMap->loadFromFile(ORAM_MAP_FILE);
-	}
-	auto oramStash = new PathORAM::InMemoryStashAdapter(3 * ORAM_LOG_CAPACITY * ORAM_Z);
-	if (!generate)
-	{
-		oramStash->loadFromFile(ORAM_STASH_FILE, ORAM_BLOCK_SIZE);
-	}
-	auto oram = new PathORAM::ORAM(
-		ORAM_LOG_CAPACITY,
-		ORAM_BLOCK_SIZE,
-		ORAM_Z,
-		oramStorage,
-		oramPositionMap,
-		oramStash,
-		generate);
-
-	if (generate)
-	{
-		oram->load(oramIndex);
-		oramPositionMap->storeToFile(ORAM_MAP_FILE);
-		oramStash->storeToFile(ORAM_STASH_FILE);
-	}
-
-	auto treeStorage	  = new BPlusTree::FileSystemStorageAdapter(TREE_BLOCK_SIZE, TREE_FILE, generate);
+	auto treeStorage	  = new BPlusTree::FileSystemStorageAdapter(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), generate);
 	BPlusTree::Tree* tree = generate ? new BPlusTree::Tree(treeStorage, treeIndex) : new BPlusTree::Tree(treeStorage);
 
-	return {oramStorage, oramPositionMap, oramStash, oram, treeStorage, tree};
+	return {oramSets, treeStorage, tree};
 }
 
 number salaryToNumber(string salary)
@@ -245,6 +264,11 @@ number salaryToNumber(string salary)
 double numberToSalary(number salary)
 {
 	return ((long long)salary - (LLONG_MAX / 4)) * 0.01;
+}
+
+string filename(string filename, int i)
+{
+	return filename + (i > -1 ? ("-" + to_string(i)) : "") + ".bin";
 }
 
 void LOG(LOG_LEVEL level, boost::format message)

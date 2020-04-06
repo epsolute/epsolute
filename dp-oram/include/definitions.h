@@ -1,5 +1,7 @@
 #pragma once
 
+#include "path-oram/oram.hpp"
+
 #include <boost/algorithm/string.hpp>
 #include <boost/format.hpp>
 #include <climits>
@@ -18,6 +20,12 @@ namespace DPORAM
 	using uchar	 = unsigned char;
 	using uint	 = unsigned int;
 	using bytes	 = vector<uchar>;
+
+	using ORAMSet = tuple<
+		PathORAM::AbsStorageAdapter*,
+		PathORAM::AbsPositionMapAdapter*,
+		PathORAM::AbsStashAdapter*,
+		PathORAM::ORAM*>;
 
 	/**
 	 * @brief Primitive exception class that passes along the excpetion message
