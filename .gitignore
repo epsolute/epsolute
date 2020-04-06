@@ -15,3 +15,5 @@ dp-oram/bin/*
 !dp-oram/bin/.gitkeep
 dp-oram/lib/*
 !dp-oram/lib/.gitkeep
+dp-oram/results/*
+!dp-oram/results/.gitkeep

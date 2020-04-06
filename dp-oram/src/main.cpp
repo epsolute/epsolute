@@ -5,21 +5,28 @@
 #include "path-oram/utility.hpp"
 
 #include <boost/program_options.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <chrono>
 #include <ctime>
 #include <future>
 #include <iomanip>
 #include <iostream>
+#include <numeric>
 #include <thread>
 
 using namespace std;
 using namespace DPORAM;
 
 namespace po = boost::program_options;
+namespace pt = boost::property_tree;
 
 po::variables_map setupArgs(int argc, char* argv[]);
-void query(vector<PathORAM::ORAM*> orams, BPlusTree::Tree* tree, vector<pair<number, number>> queries);
+vector<pair<number, number>> query(vector<PathORAM::ORAM*> orams, BPlusTree::Tree* tree, vector<pair<number, number>> queries);
 tuple<vector<pair<number, bytes>>, vector<pair<number, bytes>>, vector<pair<number, number>>> generateData(bool read);
 tuple<vector<ORAMSet>, BPlusTree::AbsStorageAdapter*, BPlusTree::Tree*> constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, bytes>> treeIndex, bool generate);
+
+void writeJson(vector<pair<number, number>> measurements);
 
 number salaryToNumber(string salary);
 double numberToSalary(number salary);
@@ -49,6 +56,11 @@ int main(int argc, char* argv[])
 {
 	auto vm = setupArgs(argc, argv);
 
+	if (!chrono::high_resolution_clock::is_steady)
+	{
+		LOG(WARNING, "high_resolution_clock is not steady in this system");
+	}
+
 	auto [oramIndex, treeIndex, queries] = generateData(vm["readInputs"].as<bool>());
 
 	COUNT = oramIndex.size();
@@ -73,9 +85,19 @@ int main(int argc, char* argv[])
 	vector<PathORAM::ORAM*> orams;
 	orams.resize(oramSets.size());
 	transform(oramSets.begin(), oramSets.end(), orams.begin(), [](ORAMSet val) { return get<3>(val); });
-	query(orams, tree, queries);
+	auto measurements = query(orams, tree, queries);
 
 	LOG(INFO, "Complete!");
+
+	vector<number> overheads;
+	overheads.resize(measurements.size());
+	transform(measurements.begin(), measurements.end(), overheads.begin(), [](pair<number, number> val) { return val.first; });
+	auto sum	 = accumulate(overheads.begin(), overheads.end(), 0.0);
+	auto average = sum / overheads.size();
+
+	LOG(INFO, boost::format("Total: %1% ms, average: %2% μs per query") % (sum / 1000 / 1000) % (average / 1000));
+
+	writeJson(measurements);
 
 	for (auto set : oramSets)
 	{
@@ -111,9 +133,11 @@ po::variables_map setupArgs(int argc, char* argv[])
 	return vm;
 }
 
-void query(vector<PathORAM::ORAM*> orams, BPlusTree::Tree* tree, vector<pair<number, number>> queries)
+vector<pair<number, number>> query(vector<PathORAM::ORAM*> orams, BPlusTree::Tree* tree, vector<pair<number, number>> queries)
 {
 	LOG(INFO, boost::format("Running %1% queries...") % queries.size());
+
+	vector<pair<number, number>> measurements;
 
 	auto queryOram = [](vector<number> ids, PathORAM::ORAM* oram, promise<vector<bytes>>* promise) -> vector<bytes> {
 		vector<bytes> answer;
@@ -133,6 +157,8 @@ void query(vector<PathORAM::ORAM*> orams, BPlusTree::Tree* tree, vector<pair<num
 
 	for (auto query : queries)
 	{
+		auto start = chrono::high_resolution_clock::now();
+
 		auto oramIds = tree->search(query.first, query.second);
 		vector<vector<number>> blockIds;
 		blockIds.resize(ORAMS_NUMBER);
@@ -171,8 +197,14 @@ void query(vector<PathORAM::ORAM*> orams, BPlusTree::Tree* tree, vector<pair<num
 			}
 		}
 
-		LOG(TRACE, boost::format("For query {%1%, %2%} the result size is %3%") % numberToSalary(query.first) % numberToSalary(query.second) % count);
+		auto end	 = chrono::high_resolution_clock::now();
+		auto elapsed = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
+		measurements.push_back({elapsed, count});
+
+		LOG(TRACE, boost::format("For query {%1%, %2%} the result size is %3% (completed in %4% μs, or %5% μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % (elapsed / 1000) % (elapsed / 1000 / count));
 	}
+
+	return measurements;
 }
 
 tuple<vector<pair<number, bytes>>, vector<pair<number, bytes>>, vector<pair<number, number>>> generateData(bool read)
@@ -235,10 +267,7 @@ tuple<vector<pair<number, bytes>>, vector<pair<number, bytes>>, vector<pair<numb
 	return {oramIndex, treeIndex, queries};
 }
 
-tuple<
-	vector<ORAMSet>,
-	BPlusTree::AbsStorageAdapter*,
-	BPlusTree::Tree*>
+tuple<vector<ORAMSet>, BPlusTree::AbsStorageAdapter*, BPlusTree::Tree*>
 constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, bytes>> treeIndex, bool generate)
 {
 	LOG(INFO,
@@ -300,6 +329,37 @@ constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, byte
 	BPlusTree::Tree* tree = generate ? new BPlusTree::Tree(treeStorage, treeIndex) : new BPlusTree::Tree(treeStorage);
 
 	return {oramSets, treeStorage, tree};
+}
+
+void writeJson(vector<pair<number, number>> measurements)
+{
+	pt::ptree root;
+	pt::ptree overheads;
+
+	for (auto measurement : measurements)
+	{
+		pt::ptree overhead;
+		overhead.put("overhead", measurement.first);
+		overhead.put("queries", measurement.second);
+		overheads.push_back({"", overhead});
+	}
+	root.put("COUNT", COUNT);
+	root.put("ORAM_BLOCK_SIZE", ORAM_BLOCK_SIZE);
+	root.put("ORAM_LOG_CAPACITY", ORAM_LOG_CAPACITY);
+	root.put("ORAMS_NUMBER", ORAMS_NUMBER);
+	root.put("PARALLEL", PARALLEL);
+	root.put("ORAM_Z", ORAM_Z);
+	root.put("TREE_BLOCK_SIZE", TREE_BLOCK_SIZE);
+
+	auto timestamp = chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now().time_since_epoch()).count();
+	root.put("TIMESTAMP", timestamp);
+	root.add_child("queries", overheads);
+
+	auto filename = boost::str(boost::format("./results/%1%.json") % timestamp);
+
+	pt::write_json(filename, root);
+
+	LOG(INFO, boost::format("Log written to %1%") % filename);
 }
 
 number salaryToNumber(string salary)
