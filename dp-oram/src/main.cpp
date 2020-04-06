@@ -58,7 +58,7 @@ int main(int argc, char* argv[])
 	transform(oramIndex.begin(), oramIndex.end(), sizes.begin(), [](pair<number, bytes> val) { return val.second.size(); });
 	ORAM_BLOCK_SIZE = *max_element(sizes.begin(), sizes.end());
 
-	ORAM_LOG_CAPACITY = ceil(log2(COUNT)) + 1;
+	ORAM_LOG_CAPACITY = ceil(log2(COUNT / ORAMS_NUMBER)) + 1;
 
 	LOG(INFO, boost::format("COUNT = %1%") % COUNT);
 	LOG(INFO, boost::format("ORAM_BLOCK_SIZE = %1%") % ORAM_BLOCK_SIZE);
