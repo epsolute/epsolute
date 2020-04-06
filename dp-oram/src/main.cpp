@@ -201,7 +201,7 @@ vector<pair<number, number>> query(vector<PathORAM::ORAM*> orams, BPlusTree::Tre
 		auto elapsed = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
 		measurements.push_back({elapsed, count});
 
-		LOG(TRACE, boost::format("For query {%1%, %2%} the result size is %3% (completed in %4% μs, or %5% μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % (elapsed / 1000) % (elapsed / 1000 / count));
+		LOG(TRACE, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %6i μs, or %4i μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % (elapsed / 1000) % (elapsed / 1000 / count));
 	}
 
 	return measurements;
@@ -226,7 +226,7 @@ tuple<vector<pair<number, bytes>>, vector<pair<number, bytes>>, vector<pair<numb
 			boost::algorithm::split(record, line, boost::is_any_of(","));
 			auto salary = salaryToNumber(record[7]);
 
-			LOG(TRACE, boost::format("Salary: %1%, data length: %2%") % numberToSalary(salary) % line.size());
+			LOG(TRACE, boost::format("Salary: %9.2f, data length: %3i") % numberToSalary(salary) % line.size());
 
 			oramIndex.push_back({i, PathORAM::fromText(line, ORAM_BLOCK_SIZE)});
 			treeIndex.push_back({salary, BPlusTree::bytesFromNumber(i)});
@@ -244,7 +244,7 @@ tuple<vector<pair<number, bytes>>, vector<pair<number, bytes>>, vector<pair<numb
 			auto left  = salaryToNumber(query[0]);
 			auto right = salaryToNumber(query[1]);
 
-			LOG(TRACE, boost::format("Query: {%1%, %2%}") % numberToSalary(left) % numberToSalary(right));
+			LOG(TRACE, boost::format("Query: {%9.2f, %9.2f}") % numberToSalary(left) % numberToSalary(right));
 
 			queries.push_back({left, right});
 		}
@@ -389,6 +389,6 @@ void LOG(LOG_LEVEL level, string message)
 	if (level >= __logLevel)
 	{
 		auto t = time(nullptr);
-		cout << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(8) << logLevelStrings[level] << ": " << message << endl;
+		cout << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(8) << logLevelColors[level] << logLevelStrings[level] << ": " << message << RESET << endl;
 	}
 }
