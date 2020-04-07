@@ -22,9 +22,9 @@ namespace po = boost::program_options;
 namespace pt = boost::property_tree;
 
 po::variables_map setupArgs(int argc, char* argv[]);
-vector<pair<number, number>> query(vector<PathORAM::ORAM*> orams, BPlusTree::Tree* tree, vector<pair<number, number>> queries);
+vector<pair<number, number>> query(vector<shared_ptr<PathORAM::ORAM>> orams, shared_ptr<BPlusTree::Tree> tree, vector<pair<number, number>> queries);
 tuple<vector<pair<number, bytes>>, vector<pair<number, bytes>>, vector<pair<number, number>>> generateData(bool read);
-tuple<vector<ORAMSet>, BPlusTree::AbsStorageAdapter*, BPlusTree::Tree*> constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, bytes>> treeIndex, bool generate);
+tuple<vector<ORAMSet>, shared_ptr<BPlusTree::AbsStorageAdapter>, shared_ptr<BPlusTree::Tree>> constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, bytes>> treeIndex, bool generate);
 
 void writeJson(vector<pair<number, number>> measurements);
 
@@ -82,7 +82,7 @@ int main(int argc, char* argv[])
 
 	auto [oramSets, treeStorage, tree] = constructIndices(oramIndex, treeIndex, vm["generateIndices"].as<bool>());
 
-	vector<PathORAM::ORAM*> orams;
+	vector<shared_ptr<PathORAM::ORAM>> orams;
 	orams.resize(oramSets.size());
 	transform(oramSets.begin(), oramSets.end(), orams.begin(), [](ORAMSet val) { return get<3>(val); });
 	auto measurements = query(orams, tree, queries);
@@ -98,14 +98,6 @@ int main(int argc, char* argv[])
 	LOG(INFO, boost::format("Total: %1% ms, average: %2% μs per query") % (sum / 1000 / 1000) % (average / 1000));
 
 	writeJson(measurements);
-
-	for (auto set : oramSets)
-	{
-		apply([](auto&&... args) { ((delete args), ...); }, set);
-	}
-
-	delete treeStorage;
-	delete tree;
 
 	return 0;
 }
@@ -133,13 +125,13 @@ po::variables_map setupArgs(int argc, char* argv[])
 	return vm;
 }
 
-vector<pair<number, number>> query(vector<PathORAM::ORAM*> orams, BPlusTree::Tree* tree, vector<pair<number, number>> queries)
+vector<pair<number, number>> query(vector<shared_ptr<PathORAM::ORAM>> orams, shared_ptr<BPlusTree::Tree> tree, vector<pair<number, number>> queries)
 {
 	LOG(INFO, boost::format("Running %1% queries...") % queries.size());
 
 	vector<pair<number, number>> measurements;
 
-	auto queryOram = [](vector<number> ids, PathORAM::ORAM* oram, promise<vector<bytes>>* promise) -> vector<bytes> {
+	auto queryOram = [](vector<number> ids, shared_ptr<PathORAM::ORAM> oram, promise<vector<bytes>>* promise) -> vector<bytes> {
 		vector<bytes> answer;
 		for (auto id : ids)
 		{
@@ -267,7 +259,7 @@ tuple<vector<pair<number, bytes>>, vector<pair<number, bytes>>, vector<pair<numb
 	return {oramIndex, treeIndex, queries};
 }
 
-tuple<vector<ORAMSet>, BPlusTree::AbsStorageAdapter*, BPlusTree::Tree*>
+tuple<vector<ORAMSet>, shared_ptr<BPlusTree::AbsStorageAdapter>, shared_ptr<BPlusTree::Tree>>
 constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, bytes>> treeIndex, bool generate)
 {
 	LOG(INFO,
@@ -295,18 +287,18 @@ constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, byte
 			oramKey = PathORAM::loadKey(filename(KEY_FILE, i));
 		}
 
-		auto oramStorage	 = new PathORAM::FileSystemStorageAdapter(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), generate);
-		auto oramPositionMap = new PathORAM::InMemoryPositionMapAdapter(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z);
+		auto oramStorage	 = make_shared<PathORAM::FileSystemStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), generate);
+		auto oramPositionMap = make_shared<PathORAM::InMemoryPositionMapAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z);
 		if (!generate)
 		{
 			oramPositionMap->loadFromFile(filename(ORAM_MAP_FILE, i));
 		}
-		auto oramStash = new PathORAM::InMemoryStashAdapter(3 * ORAM_LOG_CAPACITY * ORAM_Z);
+		auto oramStash = make_shared<PathORAM::InMemoryStashAdapter>(3 * ORAM_LOG_CAPACITY * ORAM_Z);
 		if (!generate)
 		{
 			oramStash->loadFromFile(filename(ORAM_STASH_FILE, i), ORAM_BLOCK_SIZE);
 		}
-		auto oram = new PathORAM::ORAM(
+		auto oram = make_shared<PathORAM::ORAM>(
 			ORAM_LOG_CAPACITY,
 			ORAM_BLOCK_SIZE,
 			ORAM_Z,
@@ -325,8 +317,8 @@ constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, byte
 		oramSets.push_back({oramStorage, oramPositionMap, oramStash, oram});
 	}
 
-	auto treeStorage	  = new BPlusTree::FileSystemStorageAdapter(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), generate);
-	BPlusTree::Tree* tree = generate ? new BPlusTree::Tree(treeStorage, treeIndex) : new BPlusTree::Tree(treeStorage);
+	auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), generate);
+	auto tree		 = generate ? make_shared<BPlusTree::Tree>(treeStorage, treeIndex) : make_shared<BPlusTree::Tree>(treeStorage);
 
 	return {oramSets, treeStorage, tree};
 }

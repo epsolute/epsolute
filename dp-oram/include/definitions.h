@@ -43,10 +43,10 @@ namespace DPORAM
 	using bytes	 = vector<uchar>;
 
 	using ORAMSet = tuple<
-		PathORAM::AbsStorageAdapter*,
-		PathORAM::AbsPositionMapAdapter*,
-		PathORAM::AbsStashAdapter*,
-		PathORAM::ORAM*>;
+		shared_ptr<PathORAM::AbsStorageAdapter>,
+		shared_ptr<PathORAM::AbsPositionMapAdapter>,
+		shared_ptr<PathORAM::AbsStashAdapter>,
+		shared_ptr<PathORAM::ORAM>>;
 
 	/**
 	 * @brief Primitive exception class that passes along the excpetion message
