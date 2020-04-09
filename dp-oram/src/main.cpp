@@ -31,6 +31,7 @@ void writeJson(vector<pair<number, number>> measurements);
 number salaryToNumber(string salary);
 double numberToSalary(number salary);
 string filename(string filename, int i);
+string redishost(string host, int i);
 
 void LOG(LOG_LEVEL level, string message);
 void LOG(LOG_LEVEL level, boost::format message);
@@ -42,12 +43,15 @@ auto ORAMS_NUMBER		   = 1;
 auto PARALLEL			   = true;
 const auto ORAM_Z		   = 3uLL;
 const auto TREE_BLOCK_SIZE = 64uLL;
+auto USE_REDIS			   = true;
 
 const auto KEY_FILE			 = "key";
 const auto TREE_FILE		 = "tree";
 const auto ORAM_STORAGE_FILE = "oram-storage";
 const auto ORAM_MAP_FILE	 = "oram-map";
 const auto ORAM_STASH_FILE	 = "oram-stash";
+
+const auto ORAM_REDIS_HOST = "tcp://127.0.0.1:6379";
 
 const auto DATA_FILE  = "../../experiments-scripts/scripts/data.csv";
 const auto QUERY_FILE = "../../experiments-scripts/scripts/query.csv";
@@ -79,6 +83,7 @@ int main(int argc, char* argv[])
 	LOG(INFO, boost::format("PARALLEL = %1%") % PARALLEL);
 	LOG(INFO, boost::format("ORAM_Z = %1%") % ORAM_Z);
 	LOG(INFO, boost::format("TREE_BLOCK_SIZE = %1%") % TREE_BLOCK_SIZE);
+	LOG(INFO, boost::format("USE_REDIS = %1%") % USE_REDIS);
 
 	auto [oramSets, treeStorage, tree] = constructIndices(oramIndex, treeIndex, vm["generateIndices"].as<bool>());
 
@@ -109,6 +114,7 @@ po::variables_map setupArgs(int argc, char* argv[])
 	desc.add_options()("generateIndices", po::value<bool>()->default_value(true), "if set, will generate ORAM and tree indices, otherwise will read files");
 	desc.add_options()("readInputs", po::value<bool>()->default_value(true), "if set, will read inputs from files");
 	desc.add_options()("parallel", po::value<bool>(&PARALLEL)->default_value(true), "if set, will query orams in parallel");
+	desc.add_options()("useRedis", po::value<bool>(&USE_REDIS)->default_value(true), "if set, will use Redis for ORAM, otherwise file system");
 	desc.add_options()("oramsNumber", po::value<int>(&ORAMS_NUMBER)->notifier([](int v) { if (v < 1 || v > 16) { throw Exception("malformed --oramsNumber"); } })->default_value(1), "the number of parallel ORAMs to use");
 	desc.add_options()("verbosity", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 
@@ -193,7 +199,7 @@ vector<pair<number, number>> query(vector<shared_ptr<PathORAM::ORAM>> orams, sha
 		auto elapsed = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
 		measurements.push_back({elapsed, count});
 
-		LOG(TRACE, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %6i μs, or %4i μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % (elapsed / 1000) % (elapsed / 1000 / count));
+		LOG(TRACE, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %6i μs, or %4i μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % (elapsed / 1000) % (count > 0 ? (elapsed / 1000 / count) : 0));
 	}
 
 	return measurements;
@@ -287,7 +293,10 @@ constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, byte
 			oramKey = PathORAM::loadKey(filename(KEY_FILE, i));
 		}
 
-		auto oramStorage	 = make_shared<PathORAM::FileSystemStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), generate);
+		auto oramStorage =
+			USE_REDIS ?
+				static_pointer_cast<PathORAM::AbsStorageAdapter>(make_shared<PathORAM::RedisStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(ORAM_REDIS_HOST, i), generate)) :
+				static_pointer_cast<PathORAM::AbsStorageAdapter>(make_shared<PathORAM::FileSystemStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), generate));
 		auto oramPositionMap = make_shared<PathORAM::InMemoryPositionMapAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z);
 		if (!generate)
 		{
@@ -342,6 +351,7 @@ void writeJson(vector<pair<number, number>> measurements)
 	root.put("PARALLEL", PARALLEL);
 	root.put("ORAM_Z", ORAM_Z);
 	root.put("TREE_BLOCK_SIZE", TREE_BLOCK_SIZE);
+	root.put("USE_REDIS", USE_REDIS);
 
 	auto timestamp = chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now().time_since_epoch()).count();
 	root.put("TIMESTAMP", timestamp);
@@ -369,6 +379,11 @@ double numberToSalary(number salary)
 string filename(string filename, int i)
 {
 	return filename + (i > -1 ? ("-" + to_string(i)) : "") + ".bin";
+}
+
+string redishost(string host, int i)
+{
+	return host + (i > -1 ? ("/" + to_string(i)) : "");
 }
 
 void LOG(LOG_LEVEL level, boost::format message)

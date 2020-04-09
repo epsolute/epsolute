@@ -10,7 +10,13 @@
 				"--generateIndices",
 				"${input:generateIndices}",
 				"--readInputs",
-				"${input:readInputs}"
+				"${input:readInputs}",
+				"--parallel",
+				"${input:parallel}",
+				"--oramsNumber",
+				"${input:oramsNumber}",
+				"--useRedis",
+				"${input:useRedis}"
 			],
 			"cwd": "${workspaceFolder}/dp-oram/",
 			"preLaunchTask": "build"
@@ -40,6 +46,39 @@
 			"id": "readInputs",
 			"type": "pickString",
 			"description": "Pick value for --readInputs",
+			"options": [
+				"true",
+				"false"
+			],
+			"default": "false"
+		},
+		{
+			"id": "parallel",
+			"type": "pickString",
+			"description": "Pick value for --parallel",
+			"options": [
+				"true",
+				"false"
+			],
+			"default": "false"
+		},
+		{
+			"id": "oramsNumber",
+			"type": "pickString",
+			"description": "Pick value for --oramsNumber",
+			"options": [
+				"1",
+				"2",
+				"4",
+				"8",
+				"16"
+			],
+			"default": "1"
+		},
+		{
+			"id": "useRedis",
+			"type": "pickString",
+			"description": "Pick value for --useRedis",
 			"options": [
 				"true",
 				"false"
