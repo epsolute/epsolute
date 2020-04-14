@@ -126,4 +126,41 @@ namespace DPORAM
 	}
 
 	inline LOG_LEVEL __logLevel;
+
+	enum ORAM_BACKEND
+	{
+		InMemory,
+		FileSystem,
+		Redis,
+		Aerospike
+	};
+
+	vector<string> oramBackendStrings = {
+		"InMemory",
+		"FileSystem",
+		"Redis",
+		"Aerospike"};
+
+	std::istream&
+	operator>>(std::istream& in, ORAM_BACKEND& backend)
+	{
+		string token;
+		in >> token;
+
+		vector<string> upper;
+		upper.resize(oramBackendStrings.size());
+		transform(oramBackendStrings.begin(), oramBackendStrings.end(), upper.begin(), [](string val) { return boost::to_upper_copy(val); });
+
+		auto index = find(upper.begin(), upper.end(), boost::to_upper_copy(token));
+		if (index == upper.end())
+		{
+			in.setstate(ios_base::failbit);
+		}
+		else
+		{
+			backend = (ORAM_BACKEND)distance(upper.begin(), index);
+		}
+
+		return in;
+	}
 }
