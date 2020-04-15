@@ -22,6 +22,7 @@ using namespace DPORAM;
 namespace po = boost::program_options;
 namespace pt = boost::property_tree;
 
+string timeToString(long long time);
 number salaryToNumber(string salary);
 double numberToSalary(number salary);
 string filename(string filename, int i);
@@ -42,6 +43,8 @@ auto PARALLEL			   = true;
 const auto ORAM_Z		   = 3uLL;
 const auto TREE_BLOCK_SIZE = 64uLL;
 auto ORAM_STORAGE		   = FileSystem;
+auto USE_ORAMS			   = true;
+const auto BATCH_SIZE	   = 1000;
 
 const auto FILES_DIR		 = "./storage-files";
 const auto KEY_FILE			 = "key";
@@ -69,6 +72,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("parallel", po::value<bool>(&PARALLEL)->default_value(true), "if set, will query orams in parallel");
 	desc.add_options()("oramStorage", po::value<ORAM_BACKEND>(&ORAM_STORAGE)->default_value(FileSystem), "the ORAM backend to use");
 	desc.add_options()("oramsNumber", po::value<int>(&ORAMS_NUMBER)->notifier([](int v) { if (v < 1 || v > 96) { throw Exception("malformed --oramsNumber"); } })->default_value(1), "the number of parallel ORAMs to use");
+	desc.add_options()("useOrams", po::value<bool>(&USE_ORAMS)->default_value(true), "if set will use ORAMs, otherwise each query will download everythin every query");
 	desc.add_options()("verbosity", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 
 	po::variables_map vm;
@@ -81,9 +85,13 @@ int main(int argc, char* argv[])
 		exit(1);
 	}
 
-	if (!chrono::high_resolution_clock::is_steady)
+	if (
+		vm["oramStorage"].as<ORAM_BACKEND>() == FileSystem &&
+		!vm["useOrams"].as<bool>() &&
+		vm["parallel"].as<bool>())
 	{
-		LOG(WARNING, "high_resolution_clock is not steady in this system, will use steady_clock");
+		LOG(WARNING, "Can't use FS strawman storage in parallel. PARALLEL will be set to false.");
+		PARALLEL = false;
 	}
 
 #pragma endregion
@@ -135,7 +143,12 @@ int main(int argc, char* argv[])
 	{
 		for (number i = 0; i < COUNT; i++)
 		{
-			oramIndex.push_back({i, PathORAM::fromText(to_string(i), ORAM_BLOCK_SIZE)});
+			ostringstream text;
+			for (auto j = 0; j < 10; j++)
+			{
+				text << to_string(i) + (j < 9 ? "," : "");
+			}
+			oramIndex.push_back({i, PathORAM::fromText(text.str(), ORAM_BLOCK_SIZE)});
 			treeIndex.push_back({salaryToNumber(to_string(i)), BPlusTree::bytesFromNumber(i)});
 		}
 
@@ -167,8 +180,8 @@ int main(int argc, char* argv[])
 
 	LOG(INFO,
 		vm["generateIndices"].as<bool>() ?
-			"Storing data in ORAM and generating B+ tree indices..." :
-			"Reading ORAM and B+ tree data from files...");
+			"Generating indices..." :
+			"Reading from files...");
 
 	if (vm["generateIndices"].as<bool>())
 	{
@@ -176,147 +189,275 @@ int main(int argc, char* argv[])
 		boost::filesystem::create_directories(FILES_DIR);
 	}
 
-	vector<vector<pair<number, bytes>>> oramIndexBrokenUp;
-	oramIndexBrokenUp.resize(ORAMS_NUMBER);
-	for (auto record : oramIndex)
+	vector<pair<number, number>> measurements;
+
+	if (vm["useOrams"].as<bool>())
 	{
-		oramIndexBrokenUp[record.first % ORAMS_NUMBER].push_back({record.first / ORAMS_NUMBER, record.second});
-	}
-	vector<ORAMSet> oramSets;
-	for (auto i = 0; i < ORAMS_NUMBER; i++)
-	{
-		bytes oramKey;
-		if (vm["generateIndices"].as<bool>())
+		vector<vector<pair<number, bytes>>> oramIndexBrokenUp;
+		oramIndexBrokenUp.resize(ORAMS_NUMBER);
+		for (auto record : oramIndex)
 		{
-			oramKey = PathORAM::getRandomBlock(KEYSIZE);
-			PathORAM::storeKey(oramKey, filename(KEY_FILE, i));
+			oramIndexBrokenUp[record.first % ORAMS_NUMBER].push_back({record.first / ORAMS_NUMBER, record.second});
 		}
-		else
+		vector<ORAMSet> oramSets;
+		for (auto i = 0; i < ORAMS_NUMBER; i++)
 		{
-			oramKey = PathORAM::loadKey(filename(KEY_FILE, i));
+			bytes oramKey;
+			if (vm["generateIndices"].as<bool>())
+			{
+				oramKey = PathORAM::getRandomBlock(KEYSIZE);
+				PathORAM::storeKey(oramKey, filename(KEY_FILE, i));
+			}
+			else
+			{
+				oramKey = PathORAM::loadKey(filename(KEY_FILE, i));
+			}
+
+			shared_ptr<PathORAM::AbsStorageAdapter> oramStorage;
+			switch (ORAM_STORAGE)
+			{
+				case InMemory:
+					oramStorage = make_shared<PathORAM::InMemoryStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey);
+					break;
+				case FileSystem:
+					oramStorage = make_shared<PathORAM::FileSystemStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), vm["generateIndices"].as<bool>());
+					break;
+				case Redis:
+					oramStorage = make_shared<PathORAM::RedisStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(ORAM_REDIS_HOST, i), vm["generateIndices"].as<bool>());
+					break;
+				case Aerospike:
+					oramStorage = make_shared<PathORAM::AerospikeStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, ORAM_AEROSPIKE_HOST, vm["generateIndices"].as<bool>(), to_string(i));
+					break;
+			}
+
+			auto oramPositionMap = make_shared<PathORAM::InMemoryPositionMapAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z);
+			if (!vm["generateIndices"].as<bool>())
+			{
+				oramPositionMap->loadFromFile(filename(ORAM_MAP_FILE, i));
+			}
+			auto oramStash = make_shared<PathORAM::InMemoryStashAdapter>(3 * ORAM_LOG_CAPACITY * ORAM_Z);
+			if (!vm["generateIndices"].as<bool>())
+			{
+				oramStash->loadFromFile(filename(ORAM_STASH_FILE, i), ORAM_BLOCK_SIZE);
+			}
+			auto oram = make_shared<PathORAM::ORAM>(
+				ORAM_LOG_CAPACITY,
+				ORAM_BLOCK_SIZE,
+				ORAM_Z,
+				oramStorage,
+				oramPositionMap,
+				oramStash,
+				vm["generateIndices"].as<bool>());
+
+			if (vm["generateIndices"].as<bool>())
+			{
+				oram->load(oramIndexBrokenUp[i]);
+				oramPositionMap->storeToFile(filename(ORAM_MAP_FILE, i));
+				oramStash->storeToFile(filename(ORAM_STASH_FILE, i));
+			}
+
+			oramSets.push_back({oramStorage, oramPositionMap, oramStash, oram});
 		}
 
-		shared_ptr<PathORAM::AbsStorageAdapter> oramStorage;
-		switch (ORAM_STORAGE)
-		{
-			case InMemory:
-				oramStorage = make_shared<PathORAM::InMemoryStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey);
-				break;
-			case FileSystem:
-				oramStorage = make_shared<PathORAM::FileSystemStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), vm["generateIndices"].as<bool>());
-				break;
-			case Redis:
-				oramStorage = make_shared<PathORAM::RedisStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(ORAM_REDIS_HOST, i), vm["generateIndices"].as<bool>());
-				break;
-			case Aerospike:
-				oramStorage = make_shared<PathORAM::AerospikeStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, ORAM_AEROSPIKE_HOST, vm["generateIndices"].as<bool>(), to_string(i));
-				break;
-		}
+		auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), vm["generateIndices"].as<bool>());
+		auto tree		 = vm["generateIndices"].as<bool>() ? make_shared<BPlusTree::Tree>(treeStorage, treeIndex) : make_shared<BPlusTree::Tree>(treeStorage);
 
-		auto oramPositionMap = make_shared<PathORAM::InMemoryPositionMapAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z);
-		if (!vm["generateIndices"].as<bool>())
-		{
-			oramPositionMap->loadFromFile(filename(ORAM_MAP_FILE, i));
-		}
-		auto oramStash = make_shared<PathORAM::InMemoryStashAdapter>(3 * ORAM_LOG_CAPACITY * ORAM_Z);
-		if (!vm["generateIndices"].as<bool>())
-		{
-			oramStash->loadFromFile(filename(ORAM_STASH_FILE, i), ORAM_BLOCK_SIZE);
-		}
-		auto oram = make_shared<PathORAM::ORAM>(
-			ORAM_LOG_CAPACITY,
-			ORAM_BLOCK_SIZE,
-			ORAM_Z,
-			oramStorage,
-			oramPositionMap,
-			oramStash,
-			vm["generateIndices"].as<bool>());
-
-		if (vm["generateIndices"].as<bool>())
-		{
-			oram->load(oramIndexBrokenUp[i]);
-			oramPositionMap->storeToFile(filename(ORAM_MAP_FILE, i));
-			oramStash->storeToFile(filename(ORAM_STASH_FILE, i));
-		}
-
-		oramSets.push_back({oramStorage, oramPositionMap, oramStash, oram});
-	}
-
-	auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), vm["generateIndices"].as<bool>());
-	auto tree		 = vm["generateIndices"].as<bool>() ? make_shared<BPlusTree::Tree>(treeStorage, treeIndex) : make_shared<BPlusTree::Tree>(treeStorage);
-
-	auto orams = transform<ORAMSet, shared_ptr<PathORAM::ORAM>>(oramSets, [](ORAMSet val) { return get<3>(val); });
+		auto orams = transform<ORAMSet, shared_ptr<PathORAM::ORAM>>(oramSets, [](ORAMSet val) { return get<3>(val); });
 
 #pragma endregion
 
 #pragma region QUERY
 
-	LOG(INFO, boost::format("Running %1% queries...") % queries.size());
+		LOG(INFO, boost::format("Running %1% queries...") % queries.size());
 
-	vector<pair<number, number>> measurements;
+		auto queryOram = [](vector<number> ids, shared_ptr<PathORAM::ORAM> oram, promise<vector<bytes>>* promise) -> vector<bytes> {
+			vector<bytes> answer;
+			for (auto id : ids)
+			{
+				auto block = oram->get(id);
+				answer.push_back(block);
+			}
 
-	auto queryOram = [](vector<number> ids, shared_ptr<PathORAM::ORAM> oram, promise<vector<bytes>>* promise) -> vector<bytes> {
-		vector<bytes> answer;
-		for (auto id : ids)
+			if (promise != NULL)
+			{
+				promise->set_value(answer);
+			}
+
+			return answer;
+		};
+
+		for (auto query : queries)
 		{
-			auto block = oram->get(id);
-			answer.push_back(block);
+			auto start = chrono::steady_clock::now();
+
+			auto oramIds = tree->search(query.first, query.second);
+			vector<vector<number>> blockIds;
+			blockIds.resize(ORAMS_NUMBER);
+			for (auto oramId : oramIds)
+			{
+				auto blockId = BPlusTree::numberFromBytes(oramId);
+				blockIds[blockId % ORAMS_NUMBER].push_back(blockId / ORAMS_NUMBER);
+			}
+
+			auto count = 0;
+			if (PARALLEL)
+			{
+				thread threads[ORAMS_NUMBER];
+				promise<vector<bytes>> promises[ORAMS_NUMBER];
+				future<vector<bytes>> futures[ORAMS_NUMBER];
+
+				for (auto i = 0; i < ORAMS_NUMBER; i++)
+				{
+					futures[i] = promises[i].get_future();
+					threads[i] = thread(queryOram, blockIds[i], orams[i], &promises[i]);
+				}
+
+				for (auto i = 0; i < ORAMS_NUMBER; i++)
+				{
+					auto result = futures[i].get();
+					threads[i].join();
+					count += result.size();
+				}
+			}
+			else
+			{
+				for (auto i = 0; i < ORAMS_NUMBER; i++)
+				{
+					auto result = queryOram(blockIds[i], orams[i], NULL);
+					count += result.size();
+				}
+			}
+
+			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
+			measurements.push_back({elapsed, count});
+
+			LOG(TRACE, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %7s μs, or %7s μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : 0));
 		}
-
-		if (promise != NULL)
-		{
-			promise->set_value(answer);
-		}
-
-		return answer;
-	};
-
-	for (auto query : queries)
+#pragma endregion
+	}
+	else
 	{
-		auto start = chrono::steady_clock::now();
+#pragma region STRAWMAN
 
-		auto oramIds = tree->search(query.first, query.second);
-		vector<vector<number>> blockIds;
-		blockIds.resize(ORAMS_NUMBER);
-		for (auto oramId : oramIds)
+		bytes storageKey;
+		if (vm["generateIndices"].as<bool>())
 		{
-			auto blockId = BPlusTree::numberFromBytes(oramId);
-			blockIds[blockId % ORAMS_NUMBER].push_back(blockId / ORAMS_NUMBER);
-		}
-
-		auto count = 0;
-		if (PARALLEL)
-		{
-			thread threads[ORAMS_NUMBER];
-			promise<vector<bytes>> promises[ORAMS_NUMBER];
-			future<vector<bytes>> futures[ORAMS_NUMBER];
-
-			for (auto i = 0; i < ORAMS_NUMBER; i++)
-			{
-				futures[i] = promises[i].get_future();
-				threads[i] = thread(queryOram, blockIds[i], orams[i], &promises[i]);
-			}
-
-			for (auto i = 0; i < ORAMS_NUMBER; i++)
-			{
-				auto result = futures[i].get();
-				threads[i].join();
-				count += result.size();
-			}
+			storageKey = PathORAM::getRandomBlock(KEYSIZE);
+			PathORAM::storeKey(storageKey, filename(KEY_FILE, -1));
 		}
 		else
 		{
-			for (auto i = 0; i < ORAMS_NUMBER; i++)
+			storageKey = PathORAM::loadKey(filename(KEY_FILE, -1));
+		}
+
+		shared_ptr<PathORAM::AbsStorageAdapter> storage;
+		switch (ORAM_STORAGE)
+		{
+			case InMemory:
+				storage = make_shared<PathORAM::InMemoryStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey);
+				break;
+			case FileSystem:
+				storage = make_shared<PathORAM::FileSystemStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, filename(ORAM_STORAGE_FILE, -1), vm["generateIndices"].as<bool>());
+				break;
+			case Redis:
+				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(ORAM_REDIS_HOST, -1), vm["generateIndices"].as<bool>());
+				break;
+			case Aerospike:
+				storage = make_shared<PathORAM::AerospikeStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, ORAM_AEROSPIKE_HOST, vm["generateIndices"].as<bool>());
+				break;
+		}
+
+		vector<pair<number, pair<number, bytes>>> batch;
+		for (number i = 0; i < oramIndex.size(); i++)
+		{
+			batch.push_back({i, oramIndex[i]});
+			if (i % BATCH_SIZE == 0 || i == oramIndex.size() - 1)
 			{
-				auto result = queryOram(blockIds[i], orams[i], NULL);
-				count += result.size();
+				if (batch.size() > 0)
+				{
+					storage->set(batch);
+				}
+				batch.clear();
 			}
 		}
 
-		auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
-		measurements.push_back({elapsed, count});
+		auto storageQuery = [storage](number indexFrom, number indexTo, number queryFrom, number queryTo, promise<vector<string>>* promise) -> vector<string> {
+			vector<string> answer;
 
-		LOG(TRACE, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %6i μs, or %4i μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % (elapsed / 1000) % (count > 0 ? (elapsed / 1000 / count) : 0));
+			vector<number> batch;
+			for (auto i = indexFrom; i < indexTo; i++)
+			{
+				batch.push_back(i);
+				if (i % BATCH_SIZE == 0 || i == indexTo - 1)
+				{
+					if (batch.size() > 0)
+					{
+						auto returned = storage->get(batch);
+						for (auto record : returned)
+						{
+							auto text = PathORAM::toText(record.second, ORAM_BLOCK_SIZE);
+
+							vector<string> broken;
+							boost::algorithm::split(broken, text, boost::is_any_of(","));
+							auto salary = salaryToNumber(broken[7]);
+
+							if (salary >= queryFrom && salary <= queryTo)
+							{
+								answer.push_back(text);
+							}
+						}
+						batch.clear();
+					}
+				}
+			}
+
+			if (promise != NULL)
+			{
+				promise->set_value(answer);
+			}
+
+			return answer;
+		};
+
+		for (auto query : queries)
+		{
+			auto start = chrono::steady_clock::now();
+
+			auto count = 0;
+			if (PARALLEL)
+			{
+				thread threads[ORAMS_NUMBER];
+				promise<vector<string>> promises[ORAMS_NUMBER];
+				future<vector<string>> futures[ORAMS_NUMBER];
+
+				for (auto i = 0; i < ORAMS_NUMBER; i++)
+				{
+					futures[i] = promises[i].get_future();
+					threads[i] = thread(storageQuery, i * COUNT / ORAMS_NUMBER, (i + 1) * COUNT / ORAMS_NUMBER, query.first, query.second, &promises[i]);
+				}
+
+				for (auto i = 0; i < ORAMS_NUMBER; i++)
+				{
+					auto result = futures[i].get();
+					threads[i].join();
+					count += result.size();
+				}
+			}
+			else
+			{
+				for (auto i = 0; i < ORAMS_NUMBER; i++)
+				{
+					auto result = storageQuery(i * COUNT / ORAMS_NUMBER, (i + 1) * COUNT / ORAMS_NUMBER, query.first, query.second, NULL);
+					count += result.size();
+				}
+			}
+
+			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
+			measurements.push_back({elapsed, count});
+
+			LOG(TRACE, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : 0));
+		}
+#pragma endregion
 	}
 
 	LOG(INFO, "Complete!");
@@ -324,15 +465,13 @@ int main(int argc, char* argv[])
 	auto overheads = transform<pair<number, number>, number>(measurements, [](pair<number, number> val) { return val.first; });
 	auto counts	   = transform<pair<number, number>, number>(measurements, [](pair<number, number> val) { return val.second; });
 
-	auto sum		   = accumulate(overheads.begin(), overheads.end(), 0.0);
+	auto sum		   = accumulate(overheads.begin(), overheads.end(), 0LL);
 	auto average	   = sum / overheads.size();
-	auto perResultItem = sum / accumulate(counts.begin(), counts.end(), 0.0);
-
-#pragma endregion
+	auto perResultItem = sum / accumulate(counts.begin(), counts.end(), 0LL);
 
 #pragma region WRITE_JSON
 
-	LOG(INFO, boost::format("Total: %1% ms, average: %2% μs per query, %3% μs per result item") % (sum / 1000 / 1000) % (average / 1000) % (perResultItem / 1000));
+	LOG(INFO, boost::format("Total: %1%, average: %2% per query, %3% per result item") % timeToString(sum) % timeToString(average) % timeToString(perResultItem));
 
 	pt::ptree root;
 	pt::ptree overheadsNode;
@@ -389,6 +528,30 @@ vector<OUTPUT> transform(vector<INPUT> input, function<OUTPUT(const INPUT&)> app
 	transform(input.begin(), input.end(), output.begin(), application);
 
 	return output;
+}
+
+string timeToString(long long time)
+{
+	ostringstream text;
+	vector<string> units = {
+		"ns",
+		"μs",
+		"ms",
+		"s"};
+	for (number i = 0; i < units.size(); i++)
+	{
+		if (time < 10000 || i == units.size() - 1)
+		{
+			text << time << " " << units[i];
+			break;
+		}
+		else
+		{
+			time /= 1000;
+		}
+	}
+
+	return text.str();
 }
 
 number salaryToNumber(string salary)

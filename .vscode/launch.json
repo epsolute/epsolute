@@ -15,8 +15,10 @@
 				"${input:parallel}",
 				"--oramsNumber",
 				"${input:oramsNumber}",
-				"--useRedis",
-				"${input:useRedis}"
+				"--oramStorage",
+				"${input:oramStorage}",
+				"--useOrams",
+				"${input:useOrams}"
 			],
 			"cwd": "${workspaceFolder}/dp-oram/",
 			"preLaunchTask": "build"
@@ -76,14 +78,26 @@
 			"default": "1"
 		},
 		{
-			"id": "useRedis",
+			"id": "oramStorage",
 			"type": "pickString",
-			"description": "Pick value for --useRedis",
+			"description": "Pick value for --oramStorage",
+			"options": [
+				"InMemory",
+				"FileSystem",
+				"Redis",
+				"Aerospike"
+			],
+			"default": "InMemory"
+		},
+		{
+			"id": "useOrams",
+			"type": "pickString",
+			"description": "Pick value for --useOrams",
 			"options": [
 				"true",
 				"false"
 			],
-			"default": "false"
+			"default": "true"
 		}
 	]
 }
