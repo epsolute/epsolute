@@ -173,6 +173,7 @@ int main(int argc, char* argv[])
 	LOG(INFO, boost::format("ORAM_Z = %1%") % ORAM_Z);
 	LOG(INFO, boost::format("TREE_BLOCK_SIZE = %1%") % TREE_BLOCK_SIZE);
 	LOG(INFO, boost::format("ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
+	LOG(INFO, boost::format("USE_ORAMS = %1%") % USE_ORAMS);
 
 #pragma endregion
 
@@ -338,7 +339,6 @@ int main(int argc, char* argv[])
 	else
 	{
 #pragma region STRAWMAN
-
 		bytes storageKey;
 		if (vm["generateIndices"].as<bool>())
 		{
@@ -491,6 +491,7 @@ int main(int argc, char* argv[])
 	root.put("ORAM_Z", ORAM_Z);
 	root.put("TREE_BLOCK_SIZE", TREE_BLOCK_SIZE);
 	root.put("ORAM_BACKEND", oramBackendStrings[ORAM_STORAGE]);
+	root.put("USE_ORAMS", USE_ORAMS);
 
 	auto timestamp = chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count();
 	root.put("TIMESTAMP", timestamp);
