@@ -4,6 +4,7 @@
 #include "path-oram/oram.hpp"
 #include "path-oram/utility.hpp"
 
+#include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -21,7 +22,6 @@ using namespace DPORAM;
 namespace po = boost::program_options;
 namespace pt = boost::property_tree;
 
-chrono::steady_clock::time_point getClockNow();
 number salaryToNumber(string salary);
 double numberToSalary(number salary);
 string filename(string filename, int i);
@@ -172,8 +172,8 @@ int main(int argc, char* argv[])
 
 	if (vm["generateIndices"].as<bool>())
 	{
-		filesystem::remove_all(FILES_DIR);
-		filesystem::create_directories(FILES_DIR);
+		boost::filesystem::remove_all(FILES_DIR);
+		boost::filesystem::create_directories(FILES_DIR);
 	}
 
 	vector<vector<pair<number, bytes>>> oramIndexBrokenUp;
@@ -273,7 +273,7 @@ int main(int argc, char* argv[])
 
 	for (auto query : queries)
 	{
-		auto start = getClockNow();
+		auto start = chrono::steady_clock::now();
 
 		auto oramIds = tree->search(query.first, query.second);
 		vector<vector<number>> blockIds;
@@ -313,8 +313,7 @@ int main(int argc, char* argv[])
 			}
 		}
 
-		auto end	 = getClockNow();
-		auto elapsed = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
+		auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
 		measurements.push_back({elapsed, count});
 
 		LOG(TRACE, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %6i μs, or %4i μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % (elapsed / 1000) % (count > 0 ? (elapsed / 1000 / count) : 0));
@@ -354,7 +353,7 @@ int main(int argc, char* argv[])
 	root.put("TREE_BLOCK_SIZE", TREE_BLOCK_SIZE);
 	root.put("ORAM_BACKEND", oramBackendStrings[ORAM_STORAGE]);
 
-	auto timestamp = chrono::duration_cast<chrono::milliseconds>(getClockNow().time_since_epoch()).count();
+	auto timestamp = chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count();
 	root.put("TIMESTAMP", timestamp);
 
 	pt::ptree aggregates;
@@ -390,11 +389,6 @@ vector<OUTPUT> transform(vector<INPUT> input, function<OUTPUT(const INPUT&)> app
 	transform(input.begin(), input.end(), output.begin(), application);
 
 	return output;
-}
-
-chrono::steady_clock::time_point getClockNow()
-{
-	return chrono::high_resolution_clock::is_steady ? chrono::high_resolution_clock::now() : chrono::steady_clock::now();
 }
 
 number salaryToNumber(string salary)
