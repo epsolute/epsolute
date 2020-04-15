@@ -21,20 +21,18 @@ using namespace DPORAM;
 namespace po = boost::program_options;
 namespace pt = boost::property_tree;
 
-po::variables_map setupArgs(int argc, char* argv[]);
-vector<pair<number, number>> query(vector<shared_ptr<PathORAM::ORAM>> orams, shared_ptr<BPlusTree::Tree> tree, vector<pair<number, number>> queries);
-tuple<vector<pair<number, bytes>>, vector<pair<number, bytes>>, vector<pair<number, number>>> generateData(bool read);
-tuple<vector<ORAMSet>, shared_ptr<BPlusTree::AbsStorageAdapter>, shared_ptr<BPlusTree::Tree>> constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, bytes>> treeIndex, bool generate);
-
-void writeJson(vector<pair<number, number>> measurements);
-
+chrono::steady_clock::time_point getClockNow();
 number salaryToNumber(string salary);
 double numberToSalary(number salary);
 string filename(string filename, int i);
 string redishost(string host, int i);
+template <class INPUT, class OUTPUT>
+vector<OUTPUT> transform(vector<INPUT> input, function<OUTPUT(const INPUT&)> application);
 
 void LOG(LOG_LEVEL level, string message);
 void LOG(LOG_LEVEL level, boost::format message);
+
+#pragma region GLOBALS
 
 auto COUNT				   = 1000uLL;
 auto ORAM_BLOCK_SIZE	   = 256uLL;
@@ -45,6 +43,7 @@ const auto ORAM_Z		   = 3uLL;
 const auto TREE_BLOCK_SIZE = 64uLL;
 auto ORAM_STORAGE		   = FileSystem;
 
+const auto FILES_DIR		 = "./storage-files";
 const auto KEY_FILE			 = "key";
 const auto TREE_FILE		 = "tree";
 const auto ORAM_STORAGE_FILE = "oram-storage";
@@ -57,66 +56,19 @@ const auto ORAM_AEROSPIKE_HOST = "127.0.0.1";
 const auto DATA_FILE  = "../../experiments-scripts/scripts/data.csv";
 const auto QUERY_FILE = "../../experiments-scripts/scripts/query.csv";
 
+#pragma endregion
+
 int main(int argc, char* argv[])
 {
-	auto vm = setupArgs(argc, argv);
+#pragma region COMMAND_LINE_ARGUMENTS
 
-	if (!chrono::high_resolution_clock::is_steady)
-	{
-		LOG(WARNING, "high_resolution_clock is not steady in this system");
-	}
-
-	auto [oramIndex, treeIndex, queries] = generateData(vm["readInputs"].as<bool>());
-
-	COUNT = oramIndex.size();
-
-	vector<int> sizes;
-	sizes.resize(COUNT);
-	transform(oramIndex.begin(), oramIndex.end(), sizes.begin(), [](pair<number, bytes> val) { return val.second.size(); });
-	ORAM_BLOCK_SIZE = *max_element(sizes.begin(), sizes.end());
-
-	ORAM_LOG_CAPACITY = ceil(log2(COUNT / ORAMS_NUMBER)) + 1;
-
-	LOG(INFO, boost::format("COUNT = %1%") % COUNT);
-	LOG(INFO, boost::format("ORAM_BLOCK_SIZE = %1%") % ORAM_BLOCK_SIZE);
-	LOG(INFO, boost::format("ORAM_LOG_CAPACITY = %1%") % ORAM_LOG_CAPACITY);
-	LOG(INFO, boost::format("ORAMS_NUMBER = %1%") % ORAMS_NUMBER);
-	LOG(INFO, boost::format("PARALLEL = %1%") % PARALLEL);
-	LOG(INFO, boost::format("ORAM_Z = %1%") % ORAM_Z);
-	LOG(INFO, boost::format("TREE_BLOCK_SIZE = %1%") % TREE_BLOCK_SIZE);
-	LOG(INFO, boost::format("ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
-
-	auto [oramSets, treeStorage, tree] = constructIndices(oramIndex, treeIndex, vm["generateIndices"].as<bool>());
-
-	vector<shared_ptr<PathORAM::ORAM>> orams;
-	orams.resize(oramSets.size());
-	transform(oramSets.begin(), oramSets.end(), orams.begin(), [](ORAMSet val) { return get<3>(val); });
-	auto measurements = query(orams, tree, queries);
-
-	LOG(INFO, "Complete!");
-
-	vector<number> overheads;
-	overheads.resize(measurements.size());
-	transform(measurements.begin(), measurements.end(), overheads.begin(), [](pair<number, number> val) { return val.first; });
-	auto sum	 = accumulate(overheads.begin(), overheads.end(), 0.0);
-	auto average = sum / overheads.size();
-
-	LOG(INFO, boost::format("Total: %1% ms, average: %2% μs per query") % (sum / 1000 / 1000) % (average / 1000));
-
-	writeJson(measurements);
-
-	return 0;
-}
-
-po::variables_map setupArgs(int argc, char* argv[])
-{
 	po::options_description desc("range query processor");
 	desc.add_options()("help", "produce help message");
 	desc.add_options()("generateIndices", po::value<bool>()->default_value(true), "if set, will generate ORAM and tree indices, otherwise will read files");
 	desc.add_options()("readInputs", po::value<bool>()->default_value(true), "if set, will read inputs from files");
 	desc.add_options()("parallel", po::value<bool>(&PARALLEL)->default_value(true), "if set, will query orams in parallel");
 	desc.add_options()("oramStorage", po::value<ORAM_BACKEND>(&ORAM_STORAGE)->default_value(FileSystem), "the ORAM backend to use");
-	desc.add_options()("oramsNumber", po::value<int>(&ORAMS_NUMBER)->notifier([](int v) { if (v < 1 || v > 16) { throw Exception("malformed --oramsNumber"); } })->default_value(1), "the number of parallel ORAMs to use");
+	desc.add_options()("oramsNumber", po::value<int>(&ORAMS_NUMBER)->notifier([](int v) { if (v < 1 || v > 96) { throw Exception("malformed --oramsNumber"); } })->default_value(1), "the number of parallel ORAMs to use");
 	desc.add_options()("verbosity", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 
 	po::variables_map vm;
@@ -129,91 +81,21 @@ po::variables_map setupArgs(int argc, char* argv[])
 		exit(1);
 	}
 
-	return vm;
-}
-
-vector<pair<number, number>> query(vector<shared_ptr<PathORAM::ORAM>> orams, shared_ptr<BPlusTree::Tree> tree, vector<pair<number, number>> queries)
-{
-	LOG(INFO, boost::format("Running %1% queries...") % queries.size());
-
-	vector<pair<number, number>> measurements;
-
-	auto queryOram = [](vector<number> ids, shared_ptr<PathORAM::ORAM> oram, promise<vector<bytes>>* promise) -> vector<bytes> {
-		vector<bytes> answer;
-		for (auto id : ids)
-		{
-			auto block = oram->get(id);
-			answer.push_back(block);
-		}
-
-		if (promise != NULL)
-		{
-			promise->set_value(answer);
-		}
-
-		return answer;
-	};
-
-	for (auto query : queries)
+	if (!chrono::high_resolution_clock::is_steady)
 	{
-		auto start = chrono::high_resolution_clock::now();
-
-		auto oramIds = tree->search(query.first, query.second);
-		vector<vector<number>> blockIds;
-		blockIds.resize(ORAMS_NUMBER);
-		for (auto oramId : oramIds)
-		{
-			auto blockId = BPlusTree::numberFromBytes(oramId);
-			blockIds[blockId % ORAMS_NUMBER].push_back(blockId / ORAMS_NUMBER);
-		}
-
-		auto count = 0;
-		if (PARALLEL)
-		{
-			thread threads[ORAMS_NUMBER];
-			promise<vector<bytes>> promises[ORAMS_NUMBER];
-			future<vector<bytes>> futures[ORAMS_NUMBER];
-
-			for (auto i = 0; i < ORAMS_NUMBER; i++)
-			{
-				futures[i] = promises[i].get_future();
-				threads[i] = thread(queryOram, blockIds[i], orams[i], &promises[i]);
-			}
-
-			for (auto i = 0; i < ORAMS_NUMBER; i++)
-			{
-				auto result = futures[i].get();
-				threads[i].join();
-				count += result.size();
-			}
-		}
-		else
-		{
-			for (auto i = 0; i < ORAMS_NUMBER; i++)
-			{
-				auto result = queryOram(blockIds[i], orams[i], NULL);
-				count += result.size();
-			}
-		}
-
-		auto end	 = chrono::high_resolution_clock::now();
-		auto elapsed = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
-		measurements.push_back({elapsed, count});
-
-		LOG(TRACE, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %6i μs, or %4i μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % (elapsed / 1000) % (count > 0 ? (elapsed / 1000 / count) : 0));
+		LOG(WARNING, "high_resolution_clock is not steady in this system, will use steady_clock");
 	}
 
-	return measurements;
-}
+#pragma endregion
 
-tuple<vector<pair<number, bytes>>, vector<pair<number, bytes>>, vector<pair<number, number>>> generateData(bool read)
-{
+#pragma region GENERATE_DATA
+
 	LOG(INFO, "Constructing data set...");
 
 	vector<pair<number, bytes>> oramIndex;
 	vector<pair<number, bytes>> treeIndex;
 	vector<pair<number, number>> queries;
-	if (read)
+	if (vm["readInputs"].as<bool>())
 	{
 		ifstream dataFile(DATA_FILE);
 
@@ -263,16 +145,36 @@ tuple<vector<pair<number, bytes>>, vector<pair<number, bytes>>, vector<pair<numb
 		}
 	}
 
-	return {oramIndex, treeIndex, queries};
-}
+	COUNT = oramIndex.size();
 
-tuple<vector<ORAMSet>, shared_ptr<BPlusTree::AbsStorageAdapter>, shared_ptr<BPlusTree::Tree>>
-constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, bytes>> treeIndex, bool generate)
-{
+	auto sizes		= transform<pair<number, bytes>, int>(oramIndex, [](pair<number, bytes> val) { return val.second.size(); });
+	ORAM_BLOCK_SIZE = *max_element(sizes.begin(), sizes.end());
+
+	ORAM_LOG_CAPACITY = ceil(log2(COUNT / ORAMS_NUMBER)) + 1;
+
+	LOG(INFO, boost::format("COUNT = %1%") % COUNT);
+	LOG(INFO, boost::format("ORAM_BLOCK_SIZE = %1%") % ORAM_BLOCK_SIZE);
+	LOG(INFO, boost::format("ORAM_LOG_CAPACITY = %1%") % ORAM_LOG_CAPACITY);
+	LOG(INFO, boost::format("ORAMS_NUMBER = %1%") % ORAMS_NUMBER);
+	LOG(INFO, boost::format("PARALLEL = %1%") % PARALLEL);
+	LOG(INFO, boost::format("ORAM_Z = %1%") % ORAM_Z);
+	LOG(INFO, boost::format("TREE_BLOCK_SIZE = %1%") % TREE_BLOCK_SIZE);
+	LOG(INFO, boost::format("ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
+
+#pragma endregion
+
+#pragma region CONSTRUCT_INDICES
+
 	LOG(INFO,
-		generate ?
+		vm["generateIndices"].as<bool>() ?
 			"Storing data in ORAM and generating B+ tree indices..." :
 			"Reading ORAM and B+ tree data from files...");
+
+	if (vm["generateIndices"].as<bool>())
+	{
+		filesystem::remove_all(FILES_DIR);
+		filesystem::create_directories(FILES_DIR);
+	}
 
 	vector<vector<pair<number, bytes>>> oramIndexBrokenUp;
 	oramIndexBrokenUp.resize(ORAMS_NUMBER);
@@ -284,7 +186,7 @@ constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, byte
 	for (auto i = 0; i < ORAMS_NUMBER; i++)
 	{
 		bytes oramKey;
-		if (generate)
+		if (vm["generateIndices"].as<bool>())
 		{
 			oramKey = PathORAM::getRandomBlock(KEYSIZE);
 			PathORAM::storeKey(oramKey, filename(KEY_FILE, i));
@@ -301,23 +203,23 @@ constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, byte
 				oramStorage = make_shared<PathORAM::InMemoryStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey);
 				break;
 			case FileSystem:
-				oramStorage = make_shared<PathORAM::FileSystemStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), generate);
+				oramStorage = make_shared<PathORAM::FileSystemStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), vm["generateIndices"].as<bool>());
 				break;
 			case Redis:
-				oramStorage = make_shared<PathORAM::RedisStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(ORAM_REDIS_HOST, i), generate);
+				oramStorage = make_shared<PathORAM::RedisStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(ORAM_REDIS_HOST, i), vm["generateIndices"].as<bool>());
 				break;
 			case Aerospike:
-				oramStorage = make_shared<PathORAM::AerospikeStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, ORAM_AEROSPIKE_HOST, generate, to_string(i));
+				oramStorage = make_shared<PathORAM::AerospikeStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, ORAM_AEROSPIKE_HOST, vm["generateIndices"].as<bool>(), to_string(i));
 				break;
 		}
 
 		auto oramPositionMap = make_shared<PathORAM::InMemoryPositionMapAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z);
-		if (!generate)
+		if (!vm["generateIndices"].as<bool>())
 		{
 			oramPositionMap->loadFromFile(filename(ORAM_MAP_FILE, i));
 		}
 		auto oramStash = make_shared<PathORAM::InMemoryStashAdapter>(3 * ORAM_LOG_CAPACITY * ORAM_Z);
-		if (!generate)
+		if (!vm["generateIndices"].as<bool>())
 		{
 			oramStash->loadFromFile(filename(ORAM_STASH_FILE, i), ORAM_BLOCK_SIZE);
 		}
@@ -328,9 +230,9 @@ constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, byte
 			oramStorage,
 			oramPositionMap,
 			oramStash,
-			generate);
+			vm["generateIndices"].as<bool>());
 
-		if (generate)
+		if (vm["generateIndices"].as<bool>())
 		{
 			oram->load(oramIndexBrokenUp[i]);
 			oramPositionMap->storeToFile(filename(ORAM_MAP_FILE, i));
@@ -340,23 +242,108 @@ constructIndices(vector<pair<number, bytes>> oramIndex, vector<pair<number, byte
 		oramSets.push_back({oramStorage, oramPositionMap, oramStash, oram});
 	}
 
-	auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), generate);
-	auto tree		 = generate ? make_shared<BPlusTree::Tree>(treeStorage, treeIndex) : make_shared<BPlusTree::Tree>(treeStorage);
+	auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), vm["generateIndices"].as<bool>());
+	auto tree		 = vm["generateIndices"].as<bool>() ? make_shared<BPlusTree::Tree>(treeStorage, treeIndex) : make_shared<BPlusTree::Tree>(treeStorage);
 
-	return {oramSets, treeStorage, tree};
-}
+	auto orams = transform<ORAMSet, shared_ptr<PathORAM::ORAM>>(oramSets, [](ORAMSet val) { return get<3>(val); });
 
-void writeJson(vector<pair<number, number>> measurements)
-{
+#pragma endregion
+
+#pragma region QUERY
+
+	LOG(INFO, boost::format("Running %1% queries...") % queries.size());
+
+	vector<pair<number, number>> measurements;
+
+	auto queryOram = [](vector<number> ids, shared_ptr<PathORAM::ORAM> oram, promise<vector<bytes>>* promise) -> vector<bytes> {
+		vector<bytes> answer;
+		for (auto id : ids)
+		{
+			auto block = oram->get(id);
+			answer.push_back(block);
+		}
+
+		if (promise != NULL)
+		{
+			promise->set_value(answer);
+		}
+
+		return answer;
+	};
+
+	for (auto query : queries)
+	{
+		auto start = getClockNow();
+
+		auto oramIds = tree->search(query.first, query.second);
+		vector<vector<number>> blockIds;
+		blockIds.resize(ORAMS_NUMBER);
+		for (auto oramId : oramIds)
+		{
+			auto blockId = BPlusTree::numberFromBytes(oramId);
+			blockIds[blockId % ORAMS_NUMBER].push_back(blockId / ORAMS_NUMBER);
+		}
+
+		auto count = 0;
+		if (PARALLEL)
+		{
+			thread threads[ORAMS_NUMBER];
+			promise<vector<bytes>> promises[ORAMS_NUMBER];
+			future<vector<bytes>> futures[ORAMS_NUMBER];
+
+			for (auto i = 0; i < ORAMS_NUMBER; i++)
+			{
+				futures[i] = promises[i].get_future();
+				threads[i] = thread(queryOram, blockIds[i], orams[i], &promises[i]);
+			}
+
+			for (auto i = 0; i < ORAMS_NUMBER; i++)
+			{
+				auto result = futures[i].get();
+				threads[i].join();
+				count += result.size();
+			}
+		}
+		else
+		{
+			for (auto i = 0; i < ORAMS_NUMBER; i++)
+			{
+				auto result = queryOram(blockIds[i], orams[i], NULL);
+				count += result.size();
+			}
+		}
+
+		auto end	 = getClockNow();
+		auto elapsed = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
+		measurements.push_back({elapsed, count});
+
+		LOG(TRACE, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %6i μs, or %4i μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % (elapsed / 1000) % (count > 0 ? (elapsed / 1000 / count) : 0));
+	}
+
+	LOG(INFO, "Complete!");
+
+	auto overheads = transform<pair<number, number>, number>(measurements, [](pair<number, number> val) { return val.first; });
+	auto counts	   = transform<pair<number, number>, number>(measurements, [](pair<number, number> val) { return val.second; });
+
+	auto sum		   = accumulate(overheads.begin(), overheads.end(), 0.0);
+	auto average	   = sum / overheads.size();
+	auto perResultItem = sum / accumulate(counts.begin(), counts.end(), 0.0);
+
+#pragma endregion
+
+#pragma region WRITE_JSON
+
+	LOG(INFO, boost::format("Total: %1% ms, average: %2% μs per query, %3% μs per result item") % (sum / 1000 / 1000) % (average / 1000) % (perResultItem / 1000));
+
 	pt::ptree root;
-	pt::ptree overheads;
+	pt::ptree overheadsNode;
 
 	for (auto measurement : measurements)
 	{
 		pt::ptree overhead;
 		overhead.put("overhead", measurement.first);
 		overhead.put("queries", measurement.second);
-		overheads.push_back({"", overhead});
+		overheadsNode.push_back({"", overhead});
 	}
 	root.put("COUNT", COUNT);
 	root.put("ORAM_BLOCK_SIZE", ORAM_BLOCK_SIZE);
@@ -367,15 +354,47 @@ void writeJson(vector<pair<number, number>> measurements)
 	root.put("TREE_BLOCK_SIZE", TREE_BLOCK_SIZE);
 	root.put("ORAM_BACKEND", oramBackendStrings[ORAM_STORAGE]);
 
-	auto timestamp = chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now().time_since_epoch()).count();
+	auto timestamp = chrono::duration_cast<chrono::milliseconds>(getClockNow().time_since_epoch()).count();
 	root.put("TIMESTAMP", timestamp);
-	root.add_child("queries", overheads);
 
-	auto filename = boost::str(boost::format("./results/%1%.json") % timestamp);
+	pt::ptree aggregates;
+	aggregates.put("totalElapsed", sum);
+	aggregates.put("perQuery", average);
+	aggregates.put("perResultItem", perResultItem);
+	root.add_child("aggregates", aggregates);
+
+	root.add_child("queries", overheadsNode);
+
+	auto rawtime = time(nullptr);
+	stringstream timestream;
+	timestream << put_time(localtime(&rawtime), "%Y-%m-%d-%H-%M-%S");
+
+	auto filename = boost::str(boost::format("./results/%1%-%2%.json") % timestream.str() % timestamp);
 
 	pt::write_json(filename, root);
 
 	LOG(INFO, boost::format("Log written to %1%") % filename);
+
+#pragma endregion
+
+	return 0;
+}
+
+#pragma region HELPERS
+
+template <class INPUT, class OUTPUT>
+vector<OUTPUT> transform(vector<INPUT> input, function<OUTPUT(const INPUT&)> application)
+{
+	vector<OUTPUT> output;
+	output.resize(input.size());
+	transform(input.begin(), input.end(), output.begin(), application);
+
+	return output;
+}
+
+chrono::steady_clock::time_point getClockNow()
+{
+	return chrono::high_resolution_clock::is_steady ? chrono::high_resolution_clock::now() : chrono::steady_clock::now();
 }
 
 number salaryToNumber(string salary)
@@ -392,7 +411,7 @@ double numberToSalary(number salary)
 
 string filename(string filename, int i)
 {
-	return filename + (i > -1 ? ("-" + to_string(i)) : "") + ".bin";
+	return string(FILES_DIR) + "/" + filename + (i > -1 ? ("-" + to_string(i)) : "") + ".bin";
 }
 
 string redishost(string host, int i)
@@ -413,3 +432,5 @@ void LOG(LOG_LEVEL level, string message)
 		cout << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(8) << logLevelColors[level] << logLevelStrings[level] << ": " << message << RESET << endl;
 	}
 }
+
+#pragma endregion
