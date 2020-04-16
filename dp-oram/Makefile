@@ -8,7 +8,7 @@ ODIR=obj
 LDIR=lib
 BDIR=bin
 
-LDFLAGS=-L $(LDIR)
+LDFLAGS=-L $(LDIR) -L /usr/local/opt/openssl/lib
 LDLIBS=-l boost_system -l boost_program_options -l boost_filesystem -l pthread -l bplustree -l pathoram -l redis++ -l hiredis -l aerospike -l ssl -l crypto -l dl -l z # libs for main code
 LDTESTLIBS=-l gtest -l benchmark # libs for tests and benchmarks
 INCLUDES=-I $(IDIR) -I $(LDIR)/include
