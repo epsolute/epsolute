@@ -53,9 +53,6 @@ const auto ORAM_STORAGE_FILE = "oram-storage";
 const auto ORAM_MAP_FILE	 = "oram-map";
 const auto ORAM_STASH_FILE	 = "oram-stash";
 
-const auto ORAM_REDIS_HOST	   = "tcp://127.0.0.1:6379";
-const auto ORAM_AEROSPIKE_HOST = "127.0.0.1";
-
 const auto DATA_FILE  = "../../experiments-scripts/scripts/data.csv";
 const auto QUERY_FILE = "../../experiments-scripts/scripts/query.csv";
 
@@ -74,6 +71,8 @@ int main(int argc, char* argv[])
 	desc.add_options()("oramsNumber", po::value<int>(&ORAMS_NUMBER)->notifier([](int v) { if (v < 1 || v > 96) { throw Exception("malformed --oramsNumber"); } })->default_value(1), "the number of parallel ORAMs to use");
 	desc.add_options()("useOrams", po::value<bool>(&USE_ORAMS)->default_value(true), "if set will use ORAMs, otherwise each query will download everythin every query");
 	desc.add_options()("verbosity", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
+	desc.add_options()("redisHost", po::value<string>()->default_value("tcp://127.0.0.1:6379"), "Redis host to use");
+	desc.add_options()("aerospikeHost", po::value<string>()->default_value("127.0.0.1"), "Aerospike host to use");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -175,6 +174,9 @@ int main(int argc, char* argv[])
 	LOG(INFO, boost::format("ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
 	LOG(INFO, boost::format("USE_ORAMS = %1%") % USE_ORAMS);
 
+	LOG(INFO, boost::format("REDIS = %1%") % vm["redisHost"].as<string>());
+	LOG(INFO, boost::format("AEROSPIKE = %1%") % vm["aerospikeHost"].as<string>());
+
 #pragma endregion
 
 #pragma region CONSTRUCT_INDICES
@@ -224,10 +226,10 @@ int main(int argc, char* argv[])
 					oramStorage = make_shared<PathORAM::FileSystemStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), vm["generateIndices"].as<bool>());
 					break;
 				case Redis:
-					oramStorage = make_shared<PathORAM::RedisStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(ORAM_REDIS_HOST, i), vm["generateIndices"].as<bool>());
+					oramStorage = make_shared<PathORAM::RedisStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(vm["redisHost"].as<string>(), i), vm["generateIndices"].as<bool>());
 					break;
 				case Aerospike:
-					oramStorage = make_shared<PathORAM::AerospikeStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, ORAM_AEROSPIKE_HOST, vm["generateIndices"].as<bool>(), to_string(i));
+					oramStorage = make_shared<PathORAM::AerospikeStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, vm["aerospikeHost"].as<string>(), vm["generateIndices"].as<bool>(), to_string(i));
 					break;
 			}
 
@@ -332,7 +334,7 @@ int main(int argc, char* argv[])
 			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
 			measurements.push_back({elapsed, count});
 
-			LOG(DEBUG, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : 0));
+			LOG(DEBUG, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : "0 ns"));
 		}
 #pragma endregion
 	}
@@ -360,10 +362,10 @@ int main(int argc, char* argv[])
 				storage = make_shared<PathORAM::FileSystemStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, filename(ORAM_STORAGE_FILE, -1), vm["generateIndices"].as<bool>());
 				break;
 			case Redis:
-				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(ORAM_REDIS_HOST, -1), vm["generateIndices"].as<bool>());
+				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(vm["redisHost"].as<string>(), -1), vm["generateIndices"].as<bool>());
 				break;
 			case Aerospike:
-				storage = make_shared<PathORAM::AerospikeStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, ORAM_AEROSPIKE_HOST, vm["generateIndices"].as<bool>());
+				storage = make_shared<PathORAM::AerospikeStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, vm["aerospikeHost"].as<string>(), vm["generateIndices"].as<bool>());
 				break;
 		}
 
@@ -455,7 +457,7 @@ int main(int argc, char* argv[])
 			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
 			measurements.push_back({elapsed, count});
 
-			LOG(DEBUG, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : 0));
+			LOG(DEBUG, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : "0 ns"));
 		}
 #pragma endregion
 	}
@@ -492,6 +494,8 @@ int main(int argc, char* argv[])
 	root.put("TREE_BLOCK_SIZE", TREE_BLOCK_SIZE);
 	root.put("ORAM_BACKEND", oramBackendStrings[ORAM_STORAGE]);
 	root.put("USE_ORAMS", USE_ORAMS);
+	root.put("REDIS", vm["redisHost"].as<string>());
+	root.put("AEROSPIKE", vm["aerospikeHost"].as<string>());
 
 	auto timestamp = chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count();
 	root.put("TIMESTAMP", timestamp);

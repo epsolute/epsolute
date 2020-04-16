@@ -18,7 +18,9 @@
 				"--oramStorage",
 				"${input:oramStorage}",
 				"--useOrams",
-				"${input:useOrams}"
+				"${input:useOrams}",
+				"--verbosity",
+				"DEBUG"
 			],
 			"cwd": "${workspaceFolder}/dp-oram/",
 			"preLaunchTask": "build"
