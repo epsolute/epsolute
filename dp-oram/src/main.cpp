@@ -332,7 +332,7 @@ int main(int argc, char* argv[])
 			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
 			measurements.push_back({elapsed, count});
 
-			LOG(TRACE, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %7s μs, or %7s μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : 0));
+			LOG(DEBUG, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : 0));
 		}
 #pragma endregion
 	}
@@ -455,7 +455,7 @@ int main(int argc, char* argv[])
 			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
 			measurements.push_back({elapsed, count});
 
-			LOG(TRACE, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : 0));
+			LOG(DEBUG, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : 0));
 		}
 #pragma endregion
 	}
