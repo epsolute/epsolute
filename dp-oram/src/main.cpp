@@ -63,9 +63,16 @@ const auto QUERY_FILE = "../../experiments-scripts/scripts/query.csv";
 int main(int argc, char* argv[])
 {
 	// to use wcout properly
-	setlocale(LC_ALL, "en_US.utf8");
-	locale loc("en_US.UTF-8");
-	wcout.imbue(loc);
+	try
+	{
+		setlocale(LC_ALL, "en_US.utf8");
+		locale loc("en_US.UTF-8");
+		wcout.imbue(loc);
+	}
+	catch (...)
+	{
+		LOG(WARNING, boost::wformat(L"Could not set locale: ") % L"en_US.UTF-8");
+	}
 
 #pragma region COMMAND_LINE_ARGUMENTS
 
