@@ -71,7 +71,7 @@ int main(int argc, char* argv[])
 	}
 	catch (...)
 	{
-		LOG(WARNING, boost::wformat(L"Could not set locale: ") % L"en_US.UTF-8");
+		LOG(WARNING, L"Could not set locale: en_US.UTF-8");
 	}
 
 #pragma region COMMAND_LINE_ARGUMENTS
