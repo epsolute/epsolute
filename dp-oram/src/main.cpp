@@ -63,16 +63,16 @@ int main(int argc, char* argv[])
 #pragma region COMMAND_LINE_ARGUMENTS
 
 	po::options_description desc("range query processor");
-	desc.add_options()("help", "produce help message");
-	desc.add_options()("generateIndices", po::value<bool>()->default_value(true), "if set, will generate ORAM and tree indices, otherwise will read files");
-	desc.add_options()("readInputs", po::value<bool>()->default_value(true), "if set, will read inputs from files");
-	desc.add_options()("parallel", po::value<bool>(&PARALLEL)->default_value(true), "if set, will query orams in parallel");
-	desc.add_options()("oramStorage", po::value<ORAM_BACKEND>(&ORAM_STORAGE)->default_value(FileSystem), "the ORAM backend to use");
-	desc.add_options()("oramsNumber", po::value<int>(&ORAMS_NUMBER)->notifier([](int v) { if (v < 1 || v > 96) { throw Exception("malformed --oramsNumber"); } })->default_value(1), "the number of parallel ORAMs to use");
-	desc.add_options()("useOrams", po::value<bool>(&USE_ORAMS)->default_value(true), "if set will use ORAMs, otherwise each query will download everythin every query");
-	desc.add_options()("verbosity", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
-	desc.add_options()("redisHost", po::value<string>()->default_value("tcp://127.0.0.1:6379"), "Redis host to use");
-	desc.add_options()("aerospikeHost", po::value<string>()->default_value("127.0.0.1"), "Aerospike host to use");
+	desc.add_options()("help,h", "produce help message");
+	desc.add_options()("generateIndices,g", po::value<bool>()->default_value(true), "if set, will generate ORAM and tree indices, otherwise will read files");
+	desc.add_options()("readInputs,r", po::value<bool>()->default_value(true), "if set, will read inputs from files");
+	desc.add_options()("parallel,p", po::value<bool>(&PARALLEL)->default_value(true), "if set, will query orams in parallel");
+	desc.add_options()("oramStorage,s", po::value<ORAM_BACKEND>(&ORAM_STORAGE)->default_value(FileSystem), "the ORAM backend to use");
+	desc.add_options()("oramsNumber,n", po::value<int>(&ORAMS_NUMBER)->notifier([](int v) { if (v < 1 || v > 96) { throw Exception("malformed --oramsNumber"); } })->default_value(1), "the number of parallel ORAMs to use");
+	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(true), "if set will use ORAMs, otherwise each query will download everythin every query");
+	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
+	desc.add_options()("redis", po::value<string>()->default_value("tcp://127.0.0.1:6379"), "Redis host to use");
+	desc.add_options()("aerospike", po::value<string>()->default_value("127.0.0.1"), "Aerospike host to use");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -174,8 +174,8 @@ int main(int argc, char* argv[])
 	LOG(INFO, boost::format("ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
 	LOG(INFO, boost::format("USE_ORAMS = %1%") % USE_ORAMS);
 
-	LOG(INFO, boost::format("REDIS = %1%") % vm["redisHost"].as<string>());
-	LOG(INFO, boost::format("AEROSPIKE = %1%") % vm["aerospikeHost"].as<string>());
+	LOG(INFO, boost::format("REDIS = %1%") % vm["redis"].as<string>());
+	LOG(INFO, boost::format("AEROSPIKE = %1%") % vm["aerospike"].as<string>());
 
 #pragma endregion
 
@@ -202,11 +202,10 @@ int main(int argc, char* argv[])
 		{
 			oramIndexBrokenUp[record.first % ORAMS_NUMBER].push_back({record.first / ORAMS_NUMBER, record.second});
 		}
-		vector<ORAMSet> oramSets;
-		for (auto i = 0; i < ORAMS_NUMBER; i++)
-		{
+
+		auto loadOram = [](int i, vector<pair<number, bytes>> indices, bool generate, string redisHost, string aerospikeHost, promise<ORAMSet>* promise) -> void {
 			bytes oramKey;
-			if (vm["generateIndices"].as<bool>())
+			if (generate)
 			{
 				oramKey = PathORAM::getRandomBlock(KEYSIZE);
 				PathORAM::storeKey(oramKey, filename(KEY_FILE, i));
@@ -223,23 +222,23 @@ int main(int argc, char* argv[])
 					oramStorage = make_shared<PathORAM::InMemoryStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey);
 					break;
 				case FileSystem:
-					oramStorage = make_shared<PathORAM::FileSystemStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), vm["generateIndices"].as<bool>());
+					oramStorage = make_shared<PathORAM::FileSystemStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), generate);
 					break;
 				case Redis:
-					oramStorage = make_shared<PathORAM::RedisStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(vm["redisHost"].as<string>(), i), vm["generateIndices"].as<bool>());
+					oramStorage = make_shared<PathORAM::RedisStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(redisHost, i), generate);
 					break;
 				case Aerospike:
-					oramStorage = make_shared<PathORAM::AerospikeStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, vm["aerospikeHost"].as<string>(), vm["generateIndices"].as<bool>(), to_string(i));
+					oramStorage = make_shared<PathORAM::AerospikeStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, aerospikeHost, generate, to_string(i));
 					break;
 			}
 
 			auto oramPositionMap = make_shared<PathORAM::InMemoryPositionMapAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z);
-			if (!vm["generateIndices"].as<bool>())
+			if (!generate)
 			{
 				oramPositionMap->loadFromFile(filename(ORAM_MAP_FILE, i));
 			}
 			auto oramStash = make_shared<PathORAM::InMemoryStashAdapter>(3 * ORAM_LOG_CAPACITY * ORAM_Z);
-			if (!vm["generateIndices"].as<bool>())
+			if (!generate)
 			{
 				oramStash->loadFromFile(filename(ORAM_STASH_FILE, i), ORAM_BLOCK_SIZE);
 			}
@@ -250,16 +249,42 @@ int main(int argc, char* argv[])
 				oramStorage,
 				oramPositionMap,
 				oramStash,
-				vm["generateIndices"].as<bool>());
+				generate,
+				ULONG_MAX);
 
-			if (vm["generateIndices"].as<bool>())
+			if (generate)
 			{
-				oram->load(oramIndexBrokenUp[i]);
+				oram->load(indices);
 				oramPositionMap->storeToFile(filename(ORAM_MAP_FILE, i));
 				oramStash->storeToFile(filename(ORAM_STASH_FILE, i));
 			}
 
-			oramSets.push_back({oramStorage, oramPositionMap, oramStash, oram});
+			promise->set_value({oramStorage, oramPositionMap, oramStash, oram});
+		};
+
+		vector<ORAMSet> oramSets;
+		thread threads[ORAMS_NUMBER];
+		promise<ORAMSet> promises[ORAMS_NUMBER];
+		future<ORAMSet> futures[ORAMS_NUMBER];
+
+		for (auto i = 0; i < ORAMS_NUMBER; i++)
+		{
+			futures[i] = promises[i].get_future();
+			threads[i] = thread(
+				loadOram,
+				i,
+				oramIndexBrokenUp[i],
+				vm["generateIndices"].as<bool>(),
+				vm["redis"].as<string>(),
+				vm["aerospike"].as<string>(),
+				&promises[i]);
+		}
+
+		for (auto i = 0; i < ORAMS_NUMBER; i++)
+		{
+			auto result = futures[i].get();
+			threads[i].join();
+			oramSets.push_back(result);
 		}
 
 		auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), vm["generateIndices"].as<bool>());
@@ -275,10 +300,10 @@ int main(int argc, char* argv[])
 
 		auto queryOram = [](vector<number> ids, shared_ptr<PathORAM::ORAM> oram, promise<vector<bytes>>* promise) -> vector<bytes> {
 			vector<bytes> answer;
-			for (auto id : ids)
+			if (ids.size() > 0)
 			{
-				auto block = oram->get(id);
-				answer.push_back(block);
+				auto requests = transform<number, pair<number, bytes>>(ids, [](number id) { return make_pair(id, bytes()); });
+				answer		  = oram->multiple(requests);
 			}
 
 			if (promise != NULL)
@@ -362,10 +387,10 @@ int main(int argc, char* argv[])
 				storage = make_shared<PathORAM::FileSystemStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, filename(ORAM_STORAGE_FILE, -1), vm["generateIndices"].as<bool>());
 				break;
 			case Redis:
-				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(vm["redisHost"].as<string>(), -1), vm["generateIndices"].as<bool>());
+				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(vm["redis"].as<string>(), -1), vm["generateIndices"].as<bool>());
 				break;
 			case Aerospike:
-				storage = make_shared<PathORAM::AerospikeStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, vm["aerospikeHost"].as<string>(), vm["generateIndices"].as<bool>());
+				storage = make_shared<PathORAM::AerospikeStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, vm["aerospike"].as<string>(), vm["generateIndices"].as<bool>());
 				break;
 		}
 
@@ -494,8 +519,8 @@ int main(int argc, char* argv[])
 	root.put("TREE_BLOCK_SIZE", TREE_BLOCK_SIZE);
 	root.put("ORAM_BACKEND", oramBackendStrings[ORAM_STORAGE]);
 	root.put("USE_ORAMS", USE_ORAMS);
-	root.put("REDIS", vm["redisHost"].as<string>());
-	root.put("AEROSPIKE", vm["aerospikeHost"].as<string>());
+	root.put("REDIS", vm["redis"].as<string>());
+	root.put("AEROSPIKE", vm["aerospike"].as<string>());
 
 	auto timestamp = chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count();
 	root.put("TIMESTAMP", timestamp);

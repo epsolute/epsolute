@@ -6,7 +6,9 @@
         "DPORAM",
         "oram",
         "ORAMS",
-        "pphkeys"
+        "pphkeys",
+        "ptree",
+        "stod"
     ],
     "flagWords": [],
     "dictionaries": [
