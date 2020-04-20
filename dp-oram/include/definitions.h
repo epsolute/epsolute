@@ -5,6 +5,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/format.hpp>
 #include <climits>
+#include <codecvt>
 #include <string>
 #include <vector>
 
@@ -13,23 +14,23 @@
 // COLORS
 // https://stackoverflow.com/a/9158263/1644554
 
-#define RESET "\033[0m"
-#define BLACK "\033[30m"			  /* Black */
-#define RED "\033[31m"				  /* Red */
-#define GREEN "\033[32m"			  /* Green */
-#define YELLOW "\033[33m"			  /* Yellow */
-#define BLUE "\033[34m"				  /* Blue */
-#define MAGENTA "\033[35m"			  /* Magenta */
-#define CYAN "\033[36m"				  /* Cyan */
-#define WHITE "\033[37m"			  /* White */
-#define BOLDBLACK "\033[1m\033[30m"	  /* Bold Black */
-#define BOLDRED "\033[1m\033[31m"	  /* Bold Red */
-#define BOLDGREEN "\033[1m\033[32m"	  /* Bold Green */
-#define BOLDYELLOW "\033[1m\033[33m"  /* Bold Yellow */
-#define BOLDBLUE "\033[1m\033[34m"	  /* Bold Blue */
-#define BOLDMAGENTA "\033[1m\033[35m" /* Bold Magenta */
-#define BOLDCYAN "\033[1m\033[36m"	  /* Bold Cyan */
-#define BOLDWHITE "\033[1m\033[37m"	  /* Bold White */
+#define RESET L"\033[0m"
+#define BLACK L"\033[30m"			   /* Black */
+#define RED L"\033[31m"				   /* Red */
+#define GREEN L"\033[32m"			   /* Green */
+#define YELLOW L"\033[33m"			   /* Yellow */
+#define BLUE L"\033[34m"			   /* Blue */
+#define MAGENTA L"\033[35m"			   /* Magenta */
+#define CYAN L"\033[36m"			   /* Cyan */
+#define WHITE L"\033[37m"			   /* White */
+#define BOLDBLACK L"\033[1m\033[30m"   /* Bold Black */
+#define BOLDRED L"\033[1m\033[31m"	   /* Bold Red */
+#define BOLDGREEN L"\033[1m\033[32m"   /* Bold Green */
+#define BOLDYELLOW L"\033[1m\033[33m"  /* Bold Yellow */
+#define BOLDBLUE L"\033[1m\033[34m"	   /* Bold Blue */
+#define BOLDMAGENTA L"\033[1m\033[35m" /* Bold Magenta */
+#define BOLDCYAN L"\033[1m\033[36m"	   /* Bold Cyan */
+#define BOLDWHITE L"\033[1m\033[37m"   /* Bold White */
 
 namespace DPORAM
 {
@@ -91,15 +92,15 @@ namespace DPORAM
 		ERROR,
 		CRITICAL
 	};
-	vector<string> logLevelStrings = {
-		"TRACE",
-		"DEBUG",
-		"INFO",
-		"WARNING",
-		"ERROR",
-		"CRITICAL"};
+	vector<wstring> logLevelStrings = {
+		L"TRACE",
+		L"DEBUG",
+		L"INFO",
+		L"WARNING",
+		L"ERROR",
+		L"CRITICAL"};
 
-	vector<string> logLevelColors = {
+	vector<wstring> logLevelColors = {
 		WHITE,
 		CYAN,
 		GREEN,
@@ -112,7 +113,11 @@ namespace DPORAM
 	{
 		string token;
 		in >> token;
-		auto index = find(logLevelStrings.begin(), logLevelStrings.end(), boost::to_upper_copy(token));
+
+		wstring_convert<codecvt_utf8_utf16<wchar_t>> converter;
+		auto wtoken = converter.from_bytes(boost::to_upper_copy(token));
+
+		auto index = find(logLevelStrings.begin(), logLevelStrings.end(), wtoken);
 		if (index == logLevelStrings.end())
 		{
 			in.setstate(ios_base::failbit);
@@ -135,11 +140,11 @@ namespace DPORAM
 		Aerospike
 	};
 
-	vector<string> oramBackendStrings = {
-		"InMemory",
-		"FileSystem",
-		"Redis",
-		"Aerospike"};
+	vector<wstring> oramBackendStrings = {
+		L"InMemory",
+		L"FileSystem",
+		L"Redis",
+		L"Aerospike"};
 
 	std::istream&
 	operator>>(std::istream& in, ORAM_BACKEND& backend)
@@ -147,11 +152,14 @@ namespace DPORAM
 		string token;
 		in >> token;
 
-		vector<string> upper;
-		upper.resize(oramBackendStrings.size());
-		transform(oramBackendStrings.begin(), oramBackendStrings.end(), upper.begin(), [](string val) { return boost::to_upper_copy(val); });
+		wstring_convert<codecvt_utf8_utf16<wchar_t>> converter;
+		auto wtoken = converter.from_bytes(boost::to_upper_copy(token));
 
-		auto index = find(upper.begin(), upper.end(), boost::to_upper_copy(token));
+		vector<wstring> upper;
+		upper.resize(oramBackendStrings.size());
+		transform(oramBackendStrings.begin(), oramBackendStrings.end(), upper.begin(), [](wstring val) { return boost::to_upper_copy(val); });
+
+		auto index = find(upper.begin(), upper.end(), wtoken);
 		if (index == upper.end())
 		{
 			in.setstate(ios_base::failbit);

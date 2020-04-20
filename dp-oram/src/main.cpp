@@ -14,6 +14,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <string>
 #include <thread>
 
 using namespace std;
@@ -22,16 +23,17 @@ using namespace DPORAM;
 namespace po = boost::program_options;
 namespace pt = boost::property_tree;
 
-string timeToString(long long time);
+wstring timeToString(long long time);
 number salaryToNumber(string salary);
 double numberToSalary(number salary);
 string filename(string filename, int i);
 string redishost(string host, int i);
 template <class INPUT, class OUTPUT>
 vector<OUTPUT> transform(vector<INPUT> input, function<OUTPUT(const INPUT&)> application);
+wstring toWString(string input);
 
-void LOG(LOG_LEVEL level, string message);
-void LOG(LOG_LEVEL level, boost::format message);
+void LOG(LOG_LEVEL level, wstring message);
+void LOG(LOG_LEVEL level, boost::wformat message);
 
 #pragma region GLOBALS
 
@@ -60,6 +62,11 @@ const auto QUERY_FILE = "../../experiments-scripts/scripts/query.csv";
 
 int main(int argc, char* argv[])
 {
+	// to use wcout properly
+	setlocale(LC_ALL, "en_US.utf8");
+	locale loc("en_US.UTF-8");
+	wcout.imbue(loc);
+
 #pragma region COMMAND_LINE_ARGUMENTS
 
 	po::options_description desc("range query processor");
@@ -89,7 +96,7 @@ int main(int argc, char* argv[])
 		!vm["useOrams"].as<bool>() &&
 		vm["parallel"].as<bool>())
 	{
-		LOG(WARNING, "Can't use FS strawman storage in parallel. PARALLEL will be set to false.");
+		LOG(WARNING, L"Can't use FS strawman storage in parallel. PARALLEL will be set to false.");
 		PARALLEL = false;
 	}
 
@@ -97,7 +104,7 @@ int main(int argc, char* argv[])
 
 #pragma region GENERATE_DATA
 
-	LOG(INFO, "Constructing data set...");
+	LOG(INFO, L"Constructing data set...");
 
 	vector<pair<number, bytes>> oramIndex;
 	vector<pair<number, bytes>> treeIndex;
@@ -114,7 +121,7 @@ int main(int argc, char* argv[])
 			boost::algorithm::split(record, line, boost::is_any_of(","));
 			auto salary = salaryToNumber(record[7]);
 
-			LOG(TRACE, boost::format("Salary: %9.2f, data length: %3i") % numberToSalary(salary) % line.size());
+			LOG(TRACE, boost::wformat(L"Salary: %9.2f, data length: %3i") % numberToSalary(salary) % line.size());
 
 			oramIndex.push_back({i, PathORAM::fromText(line, ORAM_BLOCK_SIZE)});
 			treeIndex.push_back({salary, BPlusTree::bytesFromNumber(i)});
@@ -132,7 +139,7 @@ int main(int argc, char* argv[])
 			auto left  = salaryToNumber(query[0]);
 			auto right = salaryToNumber(query[1]);
 
-			LOG(TRACE, boost::format("Query: {%9.2f, %9.2f}") % numberToSalary(left) % numberToSalary(right));
+			LOG(TRACE, boost::wformat(L"Query: {%9.2f, %9.2f}") % numberToSalary(left) % numberToSalary(right));
 
 			queries.push_back({left, right});
 		}
@@ -164,18 +171,18 @@ int main(int argc, char* argv[])
 
 	ORAM_LOG_CAPACITY = ceil(log2(COUNT / ORAMS_NUMBER)) + 1;
 
-	LOG(INFO, boost::format("COUNT = %1%") % COUNT);
-	LOG(INFO, boost::format("ORAM_BLOCK_SIZE = %1%") % ORAM_BLOCK_SIZE);
-	LOG(INFO, boost::format("ORAM_LOG_CAPACITY = %1%") % ORAM_LOG_CAPACITY);
-	LOG(INFO, boost::format("ORAMS_NUMBER = %1%") % ORAMS_NUMBER);
-	LOG(INFO, boost::format("PARALLEL = %1%") % PARALLEL);
-	LOG(INFO, boost::format("ORAM_Z = %1%") % ORAM_Z);
-	LOG(INFO, boost::format("TREE_BLOCK_SIZE = %1%") % TREE_BLOCK_SIZE);
-	LOG(INFO, boost::format("ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
-	LOG(INFO, boost::format("USE_ORAMS = %1%") % USE_ORAMS);
+	LOG(INFO, boost::wformat(L"COUNT = %1%") % COUNT);
+	LOG(INFO, boost::wformat(L"ORAM_BLOCK_SIZE = %1%") % ORAM_BLOCK_SIZE);
+	LOG(INFO, boost::wformat(L"ORAM_LOG_CAPACITY = %1%") % ORAM_LOG_CAPACITY);
+	LOG(INFO, boost::wformat(L"ORAMS_NUMBER = %1%") % ORAMS_NUMBER);
+	LOG(INFO, boost::wformat(L"PARALLEL = %1%") % PARALLEL);
+	LOG(INFO, boost::wformat(L"ORAM_Z = %1%") % ORAM_Z);
+	LOG(INFO, boost::wformat(L"TREE_BLOCK_SIZE = %1%") % TREE_BLOCK_SIZE);
+	LOG(INFO, boost::wformat(L"ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
+	LOG(INFO, boost::wformat(L"USE_ORAMS = %1%") % USE_ORAMS);
 
-	LOG(INFO, boost::format("REDIS = %1%") % vm["redis"].as<string>());
-	LOG(INFO, boost::format("AEROSPIKE = %1%") % vm["aerospike"].as<string>());
+	LOG(INFO, boost::wformat(L"REDIS = %1%") % toWString(vm["redis"].as<string>()));
+	LOG(INFO, boost::wformat(L"AEROSPIKE = %1%") % toWString(vm["aerospike"].as<string>()));
 
 #pragma endregion
 
@@ -183,8 +190,8 @@ int main(int argc, char* argv[])
 
 	LOG(INFO,
 		vm["generateIndices"].as<bool>() ?
-			"Generating indices..." :
-			"Reading from files...");
+			L"Generating indices..." :
+			L"Reading from files...");
 
 	if (vm["generateIndices"].as<bool>())
 	{
@@ -296,7 +303,7 @@ int main(int argc, char* argv[])
 
 #pragma region QUERY
 
-		LOG(INFO, boost::format("Running %1% queries...") % queries.size());
+		LOG(INFO, boost::wformat(L"Running %1% queries...") % queries.size());
 
 		auto queryOram = [](vector<number> ids, shared_ptr<PathORAM::ORAM> oram, promise<vector<bytes>>* promise) -> vector<bytes> {
 			vector<bytes> answer;
@@ -359,7 +366,7 @@ int main(int argc, char* argv[])
 			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
 			measurements.push_back({elapsed, count});
 
-			LOG(DEBUG, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : "0 ns"));
+			LOG(DEBUG, boost::wformat(L"For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : L"0 ns"));
 		}
 #pragma endregion
 	}
@@ -482,12 +489,12 @@ int main(int argc, char* argv[])
 			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
 			measurements.push_back({elapsed, count});
 
-			LOG(DEBUG, boost::format("For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : "0 ns"));
+			LOG(DEBUG, boost::wformat(L"For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : L"0 ns"));
 		}
 #pragma endregion
 	}
 
-	LOG(INFO, "Complete!");
+	LOG(INFO, L"Complete!");
 
 	auto overheads = transform<pair<number, number>, number>(measurements, [](pair<number, number> val) { return val.first; });
 	auto counts	   = transform<pair<number, number>, number>(measurements, [](pair<number, number> val) { return val.second; });
@@ -498,7 +505,9 @@ int main(int argc, char* argv[])
 
 #pragma region WRITE_JSON
 
-	LOG(INFO, boost::format("Total: %1%, average: %2% per query, %3% per result item") % timeToString(sum) % timeToString(average) % timeToString(perResultItem));
+	LOG(INFO, boost::wformat(L"Total: %1%, average: %2% per query, %3% per result item") % timeToString(sum) % timeToString(average) % timeToString(perResultItem));
+
+	wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
 
 	pt::ptree root;
 	pt::ptree overheadsNode;
@@ -517,7 +526,7 @@ int main(int argc, char* argv[])
 	root.put("PARALLEL", PARALLEL);
 	root.put("ORAM_Z", ORAM_Z);
 	root.put("TREE_BLOCK_SIZE", TREE_BLOCK_SIZE);
-	root.put("ORAM_BACKEND", oramBackendStrings[ORAM_STORAGE]);
+	root.put("ORAM_BACKEND", converter.to_bytes(oramBackendStrings[ORAM_STORAGE]));
 	root.put("USE_ORAMS", USE_ORAMS);
 	root.put("REDIS", vm["redis"].as<string>());
 	root.put("AEROSPIKE", vm["aerospike"].as<string>());
@@ -541,7 +550,7 @@ int main(int argc, char* argv[])
 
 	pt::write_json(filename, root);
 
-	LOG(INFO, boost::format("Log written to %1%") % filename);
+	LOG(INFO, boost::wformat(L"Log written to %1%") % converter.from_bytes(filename));
 
 #pragma endregion
 
@@ -560,19 +569,19 @@ vector<OUTPUT> transform(vector<INPUT> input, function<OUTPUT(const INPUT&)> app
 	return output;
 }
 
-string timeToString(long long time)
+wstring timeToString(long long time)
 {
-	ostringstream text;
-	vector<string> units = {
-		"ns",
-		"μs",
-		"ms",
-		"s"};
+	wstringstream text;
+	vector<wstring> units = {
+		L"ns",
+		L"μs",
+		L"ms",
+		L"s"};
 	for (number i = 0; i < units.size(); i++)
 	{
 		if (time < 10000 || i == units.size() - 1)
 		{
-			text << time << " " << units[i];
+			text << time << L" " << units[i];
 			break;
 		}
 		else
@@ -606,17 +615,23 @@ string redishost(string host, int i)
 	return host + (i > -1 ? ("/" + to_string(i)) : "");
 }
 
-void LOG(LOG_LEVEL level, boost::format message)
+wstring toWString(string input)
+{
+	wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+	return converter.from_bytes(input);
+}
+
+void LOG(LOG_LEVEL level, boost::wformat message)
 {
 	LOG(level, boost::str(message));
 }
 
-void LOG(LOG_LEVEL level, string message)
+void LOG(LOG_LEVEL level, wstring message)
 {
 	if (level >= __logLevel)
 	{
 		auto t = time(nullptr);
-		cout << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(8) << logLevelColors[level] << logLevelStrings[level] << ": " << message << RESET << endl;
+		wcout << L"[" << put_time(localtime(&t), L"%d/%m/%Y %H:%M:%S") << "] " << setw(8) << logLevelColors[level] << logLevelStrings[level] << L": " << message << RESET << endl;
 	}
 }
 
