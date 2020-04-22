@@ -233,16 +233,16 @@ int main(int argc, char* argv[])
 			switch (ORAM_STORAGE)
 			{
 				case InMemory:
-					oramStorage = make_shared<PathORAM::InMemoryStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey);
+					oramStorage = make_shared<PathORAM::InMemoryStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, ORAM_Z);
 					break;
 				case FileSystem:
-					oramStorage = make_shared<PathORAM::FileSystemStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), generate);
+					oramStorage = make_shared<PathORAM::FileSystemStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), generate, ORAM_Z);
 					break;
 				case Redis:
-					oramStorage = make_shared<PathORAM::RedisStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(redisHost, i), generate);
+					oramStorage = make_shared<PathORAM::RedisStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(redisHost, i), generate, ORAM_Z);
 					break;
 				case Aerospike:
-					oramStorage = make_shared<PathORAM::AerospikeStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, aerospikeHost, generate, to_string(i));
+					oramStorage = make_shared<PathORAM::AerospikeStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, aerospikeHost, generate, ORAM_Z, to_string(i));
 					break;
 			}
 
@@ -395,23 +395,23 @@ int main(int argc, char* argv[])
 		switch (ORAM_STORAGE)
 		{
 			case InMemory:
-				storage = make_shared<PathORAM::InMemoryStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey);
+				storage = make_shared<PathORAM::InMemoryStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, 1);
 				break;
 			case FileSystem:
-				storage = make_shared<PathORAM::FileSystemStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, filename(ORAM_STORAGE_FILE, -1), vm["generateIndices"].as<bool>());
+				storage = make_shared<PathORAM::FileSystemStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, filename(ORAM_STORAGE_FILE, -1), vm["generateIndices"].as<bool>(), 1);
 				break;
 			case Redis:
-				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(vm["redis"].as<string>(), -1), vm["generateIndices"].as<bool>());
+				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(vm["redis"].as<string>(), -1), vm["generateIndices"].as<bool>(), 1);
 				break;
 			case Aerospike:
-				storage = make_shared<PathORAM::AerospikeStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, vm["aerospike"].as<string>(), vm["generateIndices"].as<bool>());
+				storage = make_shared<PathORAM::AerospikeStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, vm["aerospike"].as<string>(), vm["generateIndices"].as<bool>(), 1);
 				break;
 		}
 
-		vector<pair<number, pair<number, bytes>>> batch;
+		vector<pair<number, vector<pair<number, bytes>>>> batch;
 		for (number i = 0; i < oramIndex.size(); i++)
 		{
-			batch.push_back({i, oramIndex[i]});
+			batch.push_back({i, {oramIndex[i]}});
 			if (i % BATCH_SIZE == 0 || i == oramIndex.size() - 1)
 			{
 				if (batch.size() > 0)
