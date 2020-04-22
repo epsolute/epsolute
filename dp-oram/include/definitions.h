@@ -92,7 +92,7 @@ namespace DPORAM
 		ERROR,
 		CRITICAL
 	};
-	vector<wstring> logLevelStrings = {
+	inline vector<wstring> logLevelStrings = {
 		L"TRACE",
 		L"DEBUG",
 		L"INFO",
@@ -100,7 +100,7 @@ namespace DPORAM
 		L"ERROR",
 		L"CRITICAL"};
 
-	vector<wstring> logLevelColors = {
+	inline vector<wstring> logLevelColors = {
 		WHITE,
 		CYAN,
 		GREEN,
@@ -108,7 +108,7 @@ namespace DPORAM
 		RED,
 		BOLDRED};
 
-	std::istream&
+	inline std::istream&
 	operator>>(std::istream& in, LOG_LEVEL& level)
 	{
 		string token;
@@ -140,13 +140,13 @@ namespace DPORAM
 		Aerospike
 	};
 
-	vector<wstring> oramBackendStrings = {
+	inline vector<wstring> oramBackendStrings = {
 		L"InMemory",
 		L"FileSystem",
 		L"Redis",
 		L"Aerospike"};
 
-	std::istream&
+	inline std::istream&
 	operator>>(std::istream& in, ORAM_BACKEND& backend)
 	{
 		string token;

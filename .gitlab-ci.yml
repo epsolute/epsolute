@@ -10,6 +10,7 @@ build-binaries:
   script:
     - cd ./$PROJECT_DIR
     - make clean copy-libs install-libs binaries
+    - make clean copy-libs install-libs run-tests
     - ./bin/main --readInputs false --oramsNumber 4 --oramStorage FileSystem
   needs:
     - project: bu/dp-oram/path-oram
