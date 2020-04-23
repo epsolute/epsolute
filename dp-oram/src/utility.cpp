@@ -1,8 +1,25 @@
 #include "utility.hpp"
 
+#include "path-oram/utility.hpp"
+
+#include <boost/random/laplace_distribution.hpp>
+#include <boost/random/linear_congruential.hpp>
+#include <boost/random/variate_generator.hpp>
+
 namespace DPORAM
 {
 	using namespace std;
+
+	double sampleLaplace(double mu, double b)
+	{
+		// TODO put proper RAND
+		boost::minstd_rand generator(rand());
+
+		auto laplaceDistribution = boost::random::laplace_distribution(mu, b);
+		boost::variate_generator variateGenerator(generator, laplaceDistribution);
+
+		return variateGenerator();
+	}
 
 	vector<pair<number, number>> BRC(number fanout, number from, number to)
 	{

@@ -7,11 +7,11 @@ using namespace std;
 
 namespace DPORAM
 {
-	class UtilityTest : public testing::TestWithParam<tuple<number, number, number, vector<pair<number, number>>>>
+	class UtilityBRCTest : public testing::TestWithParam<tuple<number, number, number, vector<pair<number, number>>>>
 	{
 	};
 
-	TEST_P(UtilityTest, BRC)
+	TEST_P(UtilityBRCTest, BRC)
 	{
 		auto [fanout, from, to, expected] = GetParam();
 
@@ -69,7 +69,7 @@ namespace DPORAM
 		return result;
 	}
 
-	INSTANTIATE_TEST_SUITE_P(UtilitySuite, UtilityTest, testing::ValuesIn(cases()));
+	INSTANTIATE_TEST_SUITE_P(UtilityBRCSuite, UtilityBRCTest, testing::ValuesIn(cases()));
 }
 
 int main(int argc, char** argv)

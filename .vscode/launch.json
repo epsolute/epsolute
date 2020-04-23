@@ -2,6 +2,15 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
+			"name": "Test",
+			"type": "lldb",
+			"request": "launch",
+			"program": "${workspaceFolder}/dp-oram/bin/test-${input:test}",
+			"args": [],
+			"cwd": "${workspaceFolder}/dp-oram/",
+			"preLaunchTask": "build"
+		},
+		{
 			"name": "Target",
 			"type": "lldb",
 			"request": "launch",
@@ -27,6 +36,16 @@
 		}
 	],
 	"inputs": [
+		{
+			"id": "test",
+			"type": "pickString",
+			"description": "Pick the test file to debug",
+			"options": [
+				"brc",
+				"laplace"
+			],
+			"default": "laplace"
+		},
 		{
 			"id": "target",
 			"type": "pickString",
