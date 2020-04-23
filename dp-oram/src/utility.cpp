@@ -4,7 +4,7 @@ namespace DPORAM
 {
 	using namespace std;
 
-	vector<pair<number, number>> BRC(number fanout, number height, number from, number to)
+	vector<pair<number, number>> BRC(number fanout, number from, number to)
 	{
 		vector<pair<number, number>> result;
 

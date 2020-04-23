@@ -7,15 +7,15 @@ using namespace std;
 
 namespace DPORAM
 {
-	class UtilityTest : public testing::TestWithParam<tuple<number, number, number, number, vector<pair<number, number>>>>
+	class UtilityTest : public testing::TestWithParam<tuple<number, number, number, vector<pair<number, number>>>>
 	{
 	};
 
 	TEST_P(UtilityTest, BRC)
 	{
-		auto [fanout, height, from, to, expected] = GetParam();
+		auto [fanout, from, to, expected] = GetParam();
 
-		auto actual = BRC(fanout, height, from, to);
+		auto actual = BRC(fanout, from, to);
 
 		auto sortFunc = [](pair<number, number> a, pair<number, number> b) -> bool {
 			if (a.first != b.first)
@@ -31,14 +31,14 @@ namespace DPORAM
 		EXPECT_EQ(expected, actual);
 	}
 
-	vector<tuple<number, number, number, number, vector<pair<number, number>>>> cases()
+	vector<tuple<number, number, number, vector<pair<number, number>>>> cases()
 	{
-		vector<tuple<number, number, number, number, vector<pair<number, number>>>> result =
+		vector<tuple<number, number, number, vector<pair<number, number>>>> result =
 			{
-				{3, 3, 2, 7, {{0, 2}, {1, 1}, {0, 6}, {0, 7}}},
-				{3, 3, 0, 8, {{2, 0}}},
-				{3, 3, 3, 5, {{1, 1}}},
-				{3, 3, 3, 3, {{0, 3}}},
+				{3, 2, 7, {{0, 2}, {1, 1}, {0, 6}, {0, 7}}},
+				{3, 0, 8, {{2, 0}}},
+				{3, 3, 5, {{1, 1}}},
+				{3, 3, 3, {{0, 3}}},
 			};
 
 		// tests from ORE benchmark BRC
@@ -63,7 +63,7 @@ namespace DPORAM
 				auto value = item.size() > 0 ? stoi(item, 0, 2) : 0;
 				expected.push_back({level, value});
 			}
-			result.push_back({2, height, from, to, expected});
+			result.push_back({2, from, to, expected});
 		}
 
 		return result;
