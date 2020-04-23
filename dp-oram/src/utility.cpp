@@ -7,8 +7,8 @@ namespace DPORAM
 	vector<pair<number, number>> BRC(number fanout, number from, number to)
 	{
 		vector<pair<number, number>> result;
-
 		int level = 0; // leaf-level, bottom
+
 		do
 		{
 			// move FROM to the right withing the closest parent, but no more than TO
