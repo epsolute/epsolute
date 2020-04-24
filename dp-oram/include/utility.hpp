@@ -8,6 +8,8 @@ namespace DPORAM
 {
 	using namespace std;
 
+	number optimalMu(double beta, number k, number N, number epsilon);
+
 	vector<pair<number, number>> BRC(number fanout, number from, number to);
 
 	double sampleLaplace(double mu, double b);

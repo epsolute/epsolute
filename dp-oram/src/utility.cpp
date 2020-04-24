@@ -10,10 +10,20 @@ namespace DPORAM
 {
 	using namespace std;
 
+	number optimalMu(double beta, number k, number N, number epsilon)
+	{
+		auto nodesExp = ceil(log(k - 1) / log(k) + log(N) / log(k) - 1);
+		auto nodes	  = (pow(k, nodesExp) - 1) / (k - 1) + N;
+
+		auto mu = (number)ceil(-log(N) / (log(k) * epsilon) * log(2 - 2 * pow(1 - beta, 1 / nodes)));
+
+		return mu;
+	}
+
 	double sampleLaplace(double mu, double b)
 	{
-		// TODO put proper RAND
-		boost::minstd_rand generator(rand());
+		auto seed = PathORAM::getRandomULong(ULONG_MAX);
+		boost::minstd_rand generator(seed);
 
 		auto laplaceDistribution = boost::random::laplace_distribution(mu, b);
 		boost::variate_generator variateGenerator(generator, laplaceDistribution);

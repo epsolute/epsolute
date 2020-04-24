@@ -37,7 +37,7 @@ OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 TARGETS = main
 TARGETBIN = $(addprefix $(BDIR)/, $(TARGETS))
 
-TESTS = brc laplace
+TESTS = brc laplace mu
 TESTBIN = $(addprefix $(BDIR)/test-, $(TESTS))
 JUNITS= $(foreach test, $(TESTS), bin/test-$(test)?--gtest_output=xml:junit-$(test).xml)
 

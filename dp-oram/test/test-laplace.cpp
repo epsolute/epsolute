@@ -11,7 +11,7 @@ namespace DPORAM
 	{
 	};
 
-	TEST_F(UtilityLaplaceTest, LaplacePRFCheck)
+	TEST_F(UtilityLaplaceTest, LaplaceCDFCheck)
 	{
 		const auto RUNS = 10000;
 		const auto min = 0.0, max = 10.0, step = 0.1, mu = 5.0, b = 1.0;
