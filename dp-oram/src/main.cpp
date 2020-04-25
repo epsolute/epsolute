@@ -3,6 +3,7 @@
 #include "definitions.h"
 #include "path-oram/oram.hpp"
 #include "path-oram/utility.hpp"
+#include "utility.hpp"
 
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
@@ -47,6 +48,10 @@ const auto TREE_BLOCK_SIZE = 64uLL;
 auto ORAM_STORAGE		   = FileSystem;
 auto USE_ORAMS			   = true;
 const auto BATCH_SIZE	   = 1000;
+const auto DP_K			   = 16;
+
+number MIN_VALUE = ULONG_MAX;
+number MAX_VALUE = 0;
 
 const auto FILES_DIR		 = "./storage-files";
 const auto KEY_FILE			 = "key";
@@ -76,14 +81,28 @@ int main(int argc, char* argv[])
 
 #pragma region COMMAND_LINE_ARGUMENTS
 
+	auto oramsNumberCheck	= [](int v) { if (v < 1 || v > 96) { throw Exception("malformed --oramsNumber"); } };
+	auto epsilonCheck		= [](int v) { if (v < 1 ) { throw Exception("malformed --epsilon, mist be >= 1"); } };
+	auto betaCheck			= [](double v) { if (v >= 1.0 || v < 0) { throw Exception("malformed --beta, must be [0, 1)"); } };
+	auto bucketsNumberCheck = [](int v) {
+		auto logV = log(v) / log(DP_K);
+		if (ceil(logV) != floor(logV))
+		{
+			throw Exception(boost::format("malformed --bucketsNumber, must be a power of %1%") % DP_K);
+		}
+	};
+
 	po::options_description desc("range query processor");
 	desc.add_options()("help,h", "produce help message");
 	desc.add_options()("generateIndices,g", po::value<bool>()->default_value(true), "if set, will generate ORAM and tree indices, otherwise will read files");
 	desc.add_options()("readInputs,r", po::value<bool>()->default_value(true), "if set, will read inputs from files");
 	desc.add_options()("parallel,p", po::value<bool>(&PARALLEL)->default_value(true), "if set, will query orams in parallel");
 	desc.add_options()("oramStorage,s", po::value<ORAM_BACKEND>(&ORAM_STORAGE)->default_value(FileSystem), "the ORAM backend to use");
-	desc.add_options()("oramsNumber,n", po::value<int>(&ORAMS_NUMBER)->notifier([](int v) { if (v < 1 || v > 96) { throw Exception("malformed --oramsNumber"); } })->default_value(1), "the number of parallel ORAMs to use");
+	desc.add_options()("oramsNumber,n", po::value<int>(&ORAMS_NUMBER)->notifier(oramsNumberCheck)->default_value(1), "the number of parallel ORAMs to use");
+	desc.add_options()("bucketsNumber,b", po::value<int>()->notifier(bucketsNumberCheck)->default_value(256), "the number of buckets for DP");
 	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(true), "if set will use ORAMs, otherwise each query will download everythin every query");
+	desc.add_options()("beta", po::value<double>()->notifier(betaCheck)->default_value(0.001), "beta parameter for DP");
+	desc.add_options()("epsilon", po::value<int>()->notifier(epsilonCheck)->default_value(10), "epsilon parameter for DP");
 	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 	desc.add_options()("redis", po::value<string>()->default_value("tcp://127.0.0.1:6379"), "Redis host to use");
 	desc.add_options()("aerospike", po::value<string>()->default_value("127.0.0.1"), "Aerospike host to use");
@@ -127,6 +146,8 @@ int main(int argc, char* argv[])
 			vector<string> record;
 			boost::algorithm::split(record, line, boost::is_any_of(","));
 			auto salary = salaryToNumber(record[7]);
+			MAX_VALUE	= max(salary, MAX_VALUE);
+			MIN_VALUE	= min(salary, MIN_VALUE);
 
 			LOG(TRACE, boost::wformat(L"Salary: %9.2f, data length: %3i") % numberToSalary(salary) % line.size());
 
@@ -161,8 +182,12 @@ int main(int argc, char* argv[])
 			{
 				text << to_string(i) + (j < 9 ? "," : "");
 			}
+			auto salary = salaryToNumber(to_string(i));
 			oramIndex.push_back({i, PathORAM::fromText(text.str(), ORAM_BLOCK_SIZE)});
-			treeIndex.push_back({salaryToNumber(to_string(i)), BPlusTree::bytesFromNumber(i)});
+			treeIndex.push_back({salary, BPlusTree::bytesFromNumber(i)});
+
+			MAX_VALUE = max(salary, MAX_VALUE);
+			MIN_VALUE = min(salary, MIN_VALUE);
 		}
 
 		for (number i = 0; i < COUNT / 10; i++)
@@ -206,7 +231,7 @@ int main(int argc, char* argv[])
 		boost::filesystem::create_directories(FILES_DIR);
 	}
 
-	vector<pair<number, number>> measurements;
+	vector<tuple<number, number, number>> measurements;
 
 	if (vm["useOrams"].as<bool>())
 	{
@@ -308,6 +333,22 @@ int main(int argc, char* argv[])
 
 #pragma endregion
 
+#pragma region DP
+
+		auto bucketsNumber = vm["bucketsNumber"].as<int>();
+		auto levels		   = (int)(log(bucketsNumber) / log(DP_K));
+		auto mu			   = optimalMu(vm["beta"].as<double>(), DP_K, bucketsNumber, vm["epsilon"].as<int>());
+		map<pair<number, number>, number> noise;
+		for (auto l = levels; l >= 0; l--)
+		{
+			for (auto i = 0; i < bucketsNumber; i++)
+			{
+				noise[{l, i}] = (int)sampleLaplace(mu, (double)levels / vm["epsilon"].as<int>());
+			}
+		}
+
+#pragma endregion
+
 #pragma region QUERY
 
 		LOG(INFO, boost::wformat(L"Running %1% queries...") % queries.size());
@@ -332,7 +373,25 @@ int main(int argc, char* argv[])
 		{
 			auto start = chrono::steady_clock::now();
 
-			auto oramIds = tree->search(query.first, query.second);
+			// DP padding
+			auto [fromBucket, toBucket, from, to] = padToBuckets(query, MIN_VALUE, MAX_VALUE, bucketsNumber);
+
+			auto oramIds = tree->search(from, to);
+
+			// DP add noise
+			auto noiseNodes	  = BRC(DP_K, fromBucket, toBucket);
+			auto noiseRecords = 0;
+			for (auto node : noiseNodes)
+			{
+				noiseRecords += noise[node];
+			}
+			for (auto i = 0uLL; i < noiseRecords; i++)
+			{
+				oramIds.push_back(BPlusTree::bytesFromNumber(PathORAM::getRandomUInt(COUNT)));
+			}
+
+			LOG(TRACE, boost::wformat(L"Query {%9.2f, %9.2f} was transformed to {%9.2f, %9.2f}, buckets [%4i, %4i], added %4i noisy records") % numberToSalary(query.first) % numberToSalary(query.second) % numberToSalary(from) % numberToSalary(to) % fromBucket % toBucket % noiseRecords);
+
 			vector<vector<number>> blockIds;
 			blockIds.resize(ORAMS_NUMBER);
 			for (auto oramId : oramIds)
@@ -341,7 +400,7 @@ int main(int argc, char* argv[])
 				blockIds[blockId % ORAMS_NUMBER].push_back(blockId / ORAMS_NUMBER);
 			}
 
-			auto count = 0;
+			vector<bytes> returned;
 			if (PARALLEL)
 			{
 				thread threads[ORAMS_NUMBER];
@@ -358,7 +417,7 @@ int main(int argc, char* argv[])
 				{
 					auto result = futures[i].get();
 					threads[i].join();
-					count += result.size();
+					returned.insert(returned.end(), result.begin(), result.end());
 				}
 			}
 			else
@@ -366,14 +425,28 @@ int main(int argc, char* argv[])
 				for (auto i = 0; i < ORAMS_NUMBER; i++)
 				{
 					auto result = queryOram(blockIds[i], orams[i], NULL);
-					count += result.size();
+					returned.insert(returned.end(), result.begin(), result.end());
+				}
+			}
+			auto count = 0;
+			for (auto record : returned)
+			{
+				auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
+
+				vector<string> broken;
+				boost::algorithm::split(broken, text, boost::is_any_of(","));
+				auto salary = salaryToNumber(broken[7]);
+
+				if (salary >= query.first && salary <= query.second)
+				{
+					count++;
 				}
 			}
 
 			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
-			measurements.push_back({elapsed, count});
+			measurements.push_back({elapsed, count, returned.size()});
 
-			LOG(DEBUG, boost::wformat(L"For query {%9.2f, %9.2f} the result size is %6i (completed in %7s, or %7s μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : L"0 ns"));
+			LOG(DEBUG, boost::wformat(L"For query {%9.2f, %9.2f} the result size is %6i (%6i with noise) (completed in %7s, or %7s μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % returned.size() % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : L"0 ns"));
 		}
 #pragma endregion
 	}
@@ -494,7 +567,7 @@ int main(int argc, char* argv[])
 			}
 
 			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
-			measurements.push_back({elapsed, count});
+			measurements.push_back({elapsed, count, COUNT});
 
 			LOG(DEBUG, boost::wformat(L"For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : L"0 ns"));
 		}
@@ -503,8 +576,8 @@ int main(int argc, char* argv[])
 
 	LOG(INFO, L"Complete!");
 
-	auto overheads = transform<pair<number, number>, number>(measurements, [](pair<number, number> val) { return val.first; });
-	auto counts	   = transform<pair<number, number>, number>(measurements, [](pair<number, number> val) { return val.second; });
+	auto overheads = transform<tuple<number, number, number>, number>(measurements, [](tuple<number, number, number> val) { return get<0>(val); });
+	auto counts	   = transform<tuple<number, number, number>, number>(measurements, [](tuple<number, number, number> val) { return get<1>(val); });
 
 	auto sum		   = accumulate(overheads.begin(), overheads.end(), 0LL);
 	auto average	   = sum / overheads.size();
@@ -522,8 +595,9 @@ int main(int argc, char* argv[])
 	for (auto measurement : measurements)
 	{
 		pt::ptree overhead;
-		overhead.put("overhead", measurement.first);
-		overhead.put("queries", measurement.second);
+		overhead.put("overhead", get<0>(measurement));
+		overhead.put("realCount", get<1>(measurement));
+		overhead.put("noisyCount", get<2>(measurement));
 		overheadsNode.push_back({"", overhead});
 	}
 	root.put("COUNT", COUNT);

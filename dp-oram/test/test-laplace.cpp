@@ -7,14 +7,17 @@ using namespace std;
 
 namespace DPORAM
 {
-	class UtilityLaplaceTest : public ::testing::Test
+	class UtilityLaplaceTest : public testing::TestWithParam<pair<double, double>>
 	{
 	};
 
-	TEST_F(UtilityLaplaceTest, LaplaceCDFCheck)
+	TEST_P(UtilityLaplaceTest, LaplaceCDFCheck)
 	{
 		const auto RUNS = 10000;
-		const auto min = 0.0, max = 10.0, step = 0.1, mu = 5.0, b = 1.0;
+		const auto step = 0.1;
+		auto [mu, b]	= GetParam();
+
+		auto min = mu - 5.0, max = mu + 5.0;
 
 		auto cdf = [](double mu, double b, double x) -> double {
 			return x <= mu ?
@@ -53,6 +56,22 @@ namespace DPORAM
 			EXPECT_NEAR(expected, actual, 0.05);
 		}
 	}
+
+	string printTestName(testing::TestParamInfo<pair<double, double>> input)
+	{
+		auto [mu, beta] = input.param;
+		return boost::str(boost::format("mu%1%beta%2%") % (mu >= 0 ? to_string((int)mu) : "MINUS" + to_string(-(int)mu)) % beta);
+	}
+
+	vector<pair<double, double>> cases = {
+		{5.0, 1.0},
+		{5.0, 2.0},
+		{5.0, 3.0},
+		{5.0, 4.0},
+		{0.0, 1.0},
+		{-5.0, 1.0}};
+
+	INSTANTIATE_TEST_SUITE_P(UtilityLaplaceSuite, UtilityLaplaceTest, testing::ValuesIn(cases), printTestName);
 }
 
 int main(int argc, char** argv)

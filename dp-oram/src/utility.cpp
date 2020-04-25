@@ -10,6 +10,25 @@ namespace DPORAM
 {
 	using namespace std;
 
+	tuple<number, number, number, number> padToBuckets(pair<number, number> query, number min, number max, number buckets)
+	{
+		auto domain = max - min;
+
+		auto fromBucket = (number)floor((query.first - min) * (double)(buckets) / domain);
+		auto toBucket	= (number)ceil((query.second - min) * (double)(buckets) / domain);
+
+		// there is a special case when query is {min, min};
+		// this would result in equal from/to buckets, so we adjust
+		if (query.first == query.second && query.first == min)
+		{
+			toBucket++;
+		}
+
+		auto scale = domain / (double)buckets;
+
+		return {fromBucket, toBucket, fromBucket * scale + min, toBucket * scale + min};
+	}
+
 	number optimalMu(double beta, number k, number N, number epsilon)
 	{
 		auto nodesExp = ceil(log(k - 1) / log(k) + log(N) / log(k) - 1);

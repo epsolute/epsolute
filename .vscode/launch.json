@@ -42,7 +42,9 @@
 			"description": "Pick the test file to debug",
 			"options": [
 				"brc",
-				"laplace"
+				"laplace",
+				"mu",
+				"padding"
 			],
 			"default": "laplace"
 		},
