@@ -57,14 +57,14 @@ namespace DPORAM
 
 		do
 		{
-			// move FROM to the right withing the closest parent, but no more than TO
+			// move FROM to the right within the closest parent, but no more than TO
 			while (from % fanout != 0 && from < to)
 			{
 				result.push_back({level, from});
 				from++;
 			}
 
-			// move TO to the left withing the closest parent, but no more than FROM
+			// move TO to the left within the closest parent, but no more than FROM
 			while (to % fanout != fanout - 1 && from < to)
 			{
 				result.push_back({level, to});
