@@ -14,5 +14,5 @@ namespace DPORAM
 
 	vector<pair<number, number>> BRC(number fanout, number from, number to);
 
-	double sampleLaplace(double mu, double b);
+	double sampleLaplace(double mu, double lambda);
 }

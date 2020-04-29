@@ -29,7 +29,9 @@
 				"--useOrams",
 				"${input:useOrams}",
 				"--verbosity",
-				"DEBUG"
+				"DEBUG",
+				"--count",
+				"${input:count}",
 			],
 			"cwd": "${workspaceFolder}/dp-oram/",
 			"preLaunchTask": "build"
@@ -121,6 +123,18 @@
 				"false"
 			],
 			"default": "true"
+		},
+		{
+			"id": "count",
+			"type": "pickString",
+			"description": "Pick value for --count",
+			"options": [
+				"1000",
+				"10000",
+				"20000",
+				"50000"
+			],
+			"default": "10000"
 		}
 	]
 }

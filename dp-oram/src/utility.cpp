@@ -5,6 +5,7 @@
 #include <boost/random/laplace_distribution.hpp>
 #include <boost/random/linear_congruential.hpp>
 #include <boost/random/variate_generator.hpp>
+#include <math.h>
 
 namespace DPORAM
 {
@@ -12,21 +13,15 @@ namespace DPORAM
 
 	tuple<number, number, number, number> padToBuckets(pair<number, number> query, number min, number max, number buckets)
 	{
-		auto domain = max - min;
+		auto step = (double)(max - min) / buckets;
 
-		auto fromBucket = (number)floor((query.first - min) * (double)(buckets) / domain);
-		auto toBucket	= (number)ceil((query.second - min) * (double)(buckets) / domain);
+		auto fromBucket = (number)floor(((query.first - min) / step));
+		auto toBucket	= (number)floor(((query.second - min) / step));
 
-		// there is a special case when query is {min, min};
-		// this would result in equal from/to buckets, so we adjust
-		if (query.first == query.second && query.first == min)
-		{
-			toBucket++;
-		}
+		fromBucket = fromBucket == buckets ? fromBucket - 1 : fromBucket;
+		toBucket   = toBucket == buckets ? toBucket - 1 : toBucket;
 
-		auto scale = domain / (double)buckets;
-
-		return {fromBucket, toBucket, fromBucket * scale + min, toBucket * scale + min};
+		return {fromBucket, toBucket, fromBucket * step + min, (toBucket + 1) * step + min};
 	}
 
 	number optimalMu(double beta, number k, number N, number epsilon)
@@ -39,12 +34,12 @@ namespace DPORAM
 		return mu;
 	}
 
-	double sampleLaplace(double mu, double b)
+	double sampleLaplace(double mu, double lambda)
 	{
 		auto seed = PathORAM::getRandomULong(ULONG_MAX);
 		boost::minstd_rand generator(seed);
 
-		auto laplaceDistribution = boost::random::laplace_distribution(mu, b);
+		auto laplaceDistribution = boost::random::laplace_distribution(mu, lambda);
 		boost::variate_generator variateGenerator(generator, laplaceDistribution);
 
 		return variateGenerator();

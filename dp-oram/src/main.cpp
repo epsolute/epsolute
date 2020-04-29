@@ -48,7 +48,11 @@ const auto TREE_BLOCK_SIZE = 64uLL;
 auto ORAM_STORAGE		   = FileSystem;
 auto USE_ORAMS			   = true;
 const auto BATCH_SIZE	   = 1000;
-const auto DP_K			   = 16;
+
+const auto DP_K = 16;
+auto DP_BETA	= 0.01;
+auto DP_EPSILON = 10;
+auto DP_BUCKETS = 0uLL;
 
 number MIN_VALUE = ULONG_MAX;
 number MAX_VALUE = 0;
@@ -60,8 +64,14 @@ const auto ORAM_STORAGE_FILE = "oram-storage";
 const auto ORAM_MAP_FILE	 = "oram-map";
 const auto ORAM_STASH_FILE	 = "oram-stash";
 
+string REDIS_HOST	  = "tcp://127.0.0.1:6379";
+string AEROSPIKE_HOST = "127.0.0.1";
+
 const auto DATA_FILE  = "../../experiments-scripts/scripts/data.csv";
 const auto QUERY_FILE = "../../experiments-scripts/scripts/query.csv";
+
+#define LOG_PARAMETER(parameter) LOG(INFO, boost::wformat(L"%1% = %2%") % #parameter % parameter)
+#define PUT_PARAMETER(parameter) root.put(#parameter, parameter);
 
 #pragma endregion
 
@@ -96,16 +106,17 @@ int main(int argc, char* argv[])
 	desc.add_options()("help,h", "produce help message");
 	desc.add_options()("generateIndices,g", po::value<bool>()->default_value(true), "if set, will generate ORAM and tree indices, otherwise will read files");
 	desc.add_options()("readInputs,r", po::value<bool>()->default_value(true), "if set, will read inputs from files");
-	desc.add_options()("parallel,p", po::value<bool>(&PARALLEL)->default_value(true), "if set, will query orams in parallel");
-	desc.add_options()("oramStorage,s", po::value<ORAM_BACKEND>(&ORAM_STORAGE)->default_value(FileSystem), "the ORAM backend to use");
-	desc.add_options()("oramsNumber,n", po::value<int>(&ORAMS_NUMBER)->notifier(oramsNumberCheck)->default_value(1), "the number of parallel ORAMs to use");
-	desc.add_options()("bucketsNumber,b", po::value<int>()->notifier(bucketsNumberCheck)->default_value(256), "the number of buckets for DP");
-	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(true), "if set will use ORAMs, otherwise each query will download everythin every query");
-	desc.add_options()("beta", po::value<double>()->notifier(betaCheck)->default_value(0.001), "beta parameter for DP");
-	desc.add_options()("epsilon", po::value<int>()->notifier(epsilonCheck)->default_value(10), "epsilon parameter for DP");
+	desc.add_options()("parallel,p", po::value<bool>(&PARALLEL)->default_value(PARALLEL), "if set, will query orams in parallel");
+	desc.add_options()("oramStorage,s", po::value<ORAM_BACKEND>(&ORAM_STORAGE)->default_value(ORAM_STORAGE), "the ORAM backend to use");
+	desc.add_options()("oramsNumber,n", po::value<int>(&ORAMS_NUMBER)->notifier(oramsNumberCheck)->default_value(ORAMS_NUMBER), "the number of parallel ORAMs to use");
+	desc.add_options()("bucketsNumber,b", po::value<number>(&DP_BUCKETS)->notifier(bucketsNumberCheck)->default_value(DP_BUCKETS), "the number of buckets for DP (if 0, will choose max buckets such that less than N)");
+	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(USE_ORAMS), "if set will use ORAMs, otherwise each query will download everythin every query");
+	desc.add_options()("beta", po::value<double>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP");
+	desc.add_options()("epsilon", po::value<int>(&DP_EPSILON)->notifier(epsilonCheck)->default_value(DP_EPSILON), "epsilon parameter for DP");
+	desc.add_options()("count", po::value<number>(&COUNT)->default_value(COUNT), "number of synthetic records to generate");
 	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
-	desc.add_options()("redis", po::value<string>()->default_value("tcp://127.0.0.1:6379"), "Redis host to use");
-	desc.add_options()("aerospike", po::value<string>()->default_value("127.0.0.1"), "Aerospike host to use");
+	desc.add_options()("redis", po::value<string>(&REDIS_HOST)->default_value(REDIS_HOST), "Redis host to use");
+	desc.add_options()("aerospike", po::value<string>(&AEROSPIKE_HOST)->default_value(AEROSPIKE_HOST), "Aerospike host to use");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -118,9 +129,7 @@ int main(int argc, char* argv[])
 	}
 
 	if (
-		vm["oramStorage"].as<ORAM_BACKEND>() == FileSystem &&
-		!vm["useOrams"].as<bool>() &&
-		vm["parallel"].as<bool>())
+		ORAM_STORAGE == FileSystem && !USE_ORAMS && PARALLEL)
 	{
 		LOG(WARNING, L"Can't use FS strawman storage in parallel. PARALLEL will be set to false.");
 		PARALLEL = false;
@@ -203,18 +212,32 @@ int main(int argc, char* argv[])
 
 	ORAM_LOG_CAPACITY = ceil(log2(COUNT / ORAMS_NUMBER)) + 1;
 
-	LOG(INFO, boost::wformat(L"COUNT = %1%") % COUNT);
-	LOG(INFO, boost::wformat(L"ORAM_BLOCK_SIZE = %1%") % ORAM_BLOCK_SIZE);
-	LOG(INFO, boost::wformat(L"ORAM_LOG_CAPACITY = %1%") % ORAM_LOG_CAPACITY);
-	LOG(INFO, boost::wformat(L"ORAMS_NUMBER = %1%") % ORAMS_NUMBER);
-	LOG(INFO, boost::wformat(L"PARALLEL = %1%") % PARALLEL);
-	LOG(INFO, boost::wformat(L"ORAM_Z = %1%") % ORAM_Z);
-	LOG(INFO, boost::wformat(L"TREE_BLOCK_SIZE = %1%") % TREE_BLOCK_SIZE);
-	LOG(INFO, boost::wformat(L"ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
-	LOG(INFO, boost::wformat(L"USE_ORAMS = %1%") % USE_ORAMS);
+	if (DP_BUCKETS == 0)
+	{
+		DP_BUCKETS = 1;
+		while (DP_BUCKETS * DP_K <= COUNT)
+		{
+			DP_BUCKETS *= DP_K;
+		}
+	}
 
-	LOG(INFO, boost::wformat(L"REDIS = %1%") % toWString(vm["redis"].as<string>()));
-	LOG(INFO, boost::wformat(L"AEROSPIKE = %1%") % toWString(vm["aerospike"].as<string>()));
+	LOG_PARAMETER(COUNT);
+	LOG_PARAMETER(ORAM_BLOCK_SIZE);
+	LOG_PARAMETER(ORAM_LOG_CAPACITY);
+	LOG_PARAMETER(ORAMS_NUMBER);
+	LOG_PARAMETER(PARALLEL);
+	LOG_PARAMETER(ORAM_Z);
+	LOG_PARAMETER(TREE_BLOCK_SIZE);
+	LOG_PARAMETER(USE_ORAMS);
+	LOG_PARAMETER(BATCH_SIZE);
+	LOG_PARAMETER(DP_K);
+	LOG_PARAMETER(DP_BUCKETS);
+	LOG_PARAMETER(DP_BETA);
+	LOG_PARAMETER(DP_EPSILON);
+
+	LOG(INFO, boost::wformat(L"ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
+	LOG(INFO, boost::wformat(L"REDIS_HOST = %1%") % toWString(REDIS_HOST));
+	LOG(INFO, boost::wformat(L"AEROSPIKE_HOST = %1%") % toWString(AEROSPIKE_HOST));
 
 #pragma endregion
 
@@ -233,7 +256,7 @@ int main(int argc, char* argv[])
 
 	vector<tuple<number, number, number>> measurements;
 
-	if (vm["useOrams"].as<bool>())
+	if (USE_ORAMS)
 	{
 		vector<vector<pair<number, bytes>>> oramIndexBrokenUp;
 		oramIndexBrokenUp.resize(ORAMS_NUMBER);
@@ -314,8 +337,8 @@ int main(int argc, char* argv[])
 				i,
 				oramIndexBrokenUp[i],
 				vm["generateIndices"].as<bool>(),
-				vm["redis"].as<string>(),
-				vm["aerospike"].as<string>(),
+				REDIS_HOST,
+				AEROSPIKE_HOST,
 				&promises[i]);
 		}
 
@@ -335,17 +358,19 @@ int main(int argc, char* argv[])
 
 #pragma region DP
 
-		auto bucketsNumber = vm["bucketsNumber"].as<int>();
-		auto levels		   = (int)(log(bucketsNumber) / log(DP_K));
-		auto mu			   = optimalMu(vm["beta"].as<double>(), DP_K, bucketsNumber, vm["epsilon"].as<int>());
+		auto levels = (int)(log(DP_BUCKETS) / log(DP_K));
+		auto mu		= optimalMu(DP_BETA, DP_K, DP_BUCKETS, DP_EPSILON);
 		map<pair<number, number>, number> noise;
-		for (auto l = levels; l >= 0; l--)
+		auto buckets = DP_BUCKETS;
+		for (auto l = 0; l < levels; l++)
 		{
-			for (auto i = 0; i < bucketsNumber; i++)
+			for (auto i = 0; i < buckets; i++)
 			{
-				noise[{l, i}] = (int)sampleLaplace(mu, (double)levels / vm["epsilon"].as<int>());
+				noise[{l, i}] = (int)sampleLaplace(mu, (double)levels / DP_EPSILON);
 			}
+			buckets /= DP_K;
 		}
+		noise[{levels, 0}] = 0.0; // root noise is zero, because downloading all data hides everything by definition
 
 #pragma endregion
 
@@ -374,7 +399,7 @@ int main(int argc, char* argv[])
 			auto start = chrono::steady_clock::now();
 
 			// DP padding
-			auto [fromBucket, toBucket, from, to] = padToBuckets(query, MIN_VALUE, MAX_VALUE, bucketsNumber);
+			auto [fromBucket, toBucket, from, to] = padToBuckets(query, MIN_VALUE, MAX_VALUE, DP_BUCKETS);
 
 			auto oramIds = tree->search(from, to);
 
@@ -474,10 +499,10 @@ int main(int argc, char* argv[])
 				storage = make_shared<PathORAM::FileSystemStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, filename(ORAM_STORAGE_FILE, -1), vm["generateIndices"].as<bool>(), 1);
 				break;
 			case Redis:
-				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(vm["redis"].as<string>(), -1), vm["generateIndices"].as<bool>(), 1);
+				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(REDIS_HOST, -1), vm["generateIndices"].as<bool>(), 1);
 				break;
 			case Aerospike:
-				storage = make_shared<PathORAM::AerospikeStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, vm["aerospike"].as<string>(), vm["generateIndices"].as<bool>(), 1);
+				storage = make_shared<PathORAM::AerospikeStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, AEROSPIKE_HOST, vm["generateIndices"].as<bool>(), 1);
 				break;
 		}
 
@@ -600,17 +625,24 @@ int main(int argc, char* argv[])
 		overhead.put("noisyCount", get<2>(measurement));
 		overheadsNode.push_back({"", overhead});
 	}
-	root.put("COUNT", COUNT);
-	root.put("ORAM_BLOCK_SIZE", ORAM_BLOCK_SIZE);
-	root.put("ORAM_LOG_CAPACITY", ORAM_LOG_CAPACITY);
-	root.put("ORAMS_NUMBER", ORAMS_NUMBER);
-	root.put("PARALLEL", PARALLEL);
-	root.put("ORAM_Z", ORAM_Z);
-	root.put("TREE_BLOCK_SIZE", TREE_BLOCK_SIZE);
+
+	PUT_PARAMETER(COUNT);
+	PUT_PARAMETER(ORAM_BLOCK_SIZE);
+	PUT_PARAMETER(ORAM_LOG_CAPACITY);
+	PUT_PARAMETER(ORAMS_NUMBER);
+	PUT_PARAMETER(PARALLEL);
+	PUT_PARAMETER(ORAM_Z);
+	PUT_PARAMETER(TREE_BLOCK_SIZE);
+	PUT_PARAMETER(USE_ORAMS);
+	PUT_PARAMETER(BATCH_SIZE);
+	PUT_PARAMETER(DP_BUCKETS);
+	PUT_PARAMETER(DP_K);
+	PUT_PARAMETER(DP_BETA);
+	PUT_PARAMETER(DP_EPSILON);
+
 	root.put("ORAM_BACKEND", converter.to_bytes(oramBackendStrings[ORAM_STORAGE]));
-	root.put("USE_ORAMS", USE_ORAMS);
-	root.put("REDIS", vm["redis"].as<string>());
-	root.put("AEROSPIKE", vm["aerospike"].as<string>());
+	root.put("REDIS", REDIS_HOST);
+	root.put("AEROSPIKE", AEROSPIKE_HOST);
 
 	auto timestamp = chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count();
 	root.put("TIMESTAMP", timestamp);
