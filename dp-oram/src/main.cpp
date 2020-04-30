@@ -359,7 +359,7 @@ int main(int argc, char* argv[])
 #pragma region DP
 
 		auto levels = (int)(log(DP_BUCKETS) / log(DP_K));
-		auto mu		= optimalMu(pow(2, -DP_BETA), DP_K, DP_BUCKETS, DP_EPSILON);
+		auto mu		= optimalMu(1.0 / (1 << DP_BETA), DP_K, DP_BUCKETS, DP_EPSILON);
 		map<pair<number, number>, number> noise;
 		auto buckets = DP_BUCKETS;
 		for (auto l = 0; l < levels; l++)
