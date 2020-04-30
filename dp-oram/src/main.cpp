@@ -54,6 +54,8 @@ auto DP_BETA	= 10uLL;
 auto DP_EPSILON = 10;
 auto DP_BUCKETS = 0uLL;
 
+auto SEED = 1305;
+
 number MIN_VALUE = ULONG_MAX;
 number MAX_VALUE = 0;
 
@@ -116,6 +118,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("count", po::value<number>(&COUNT)->default_value(COUNT), "number of synthetic records to generate");
 	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 	desc.add_options()("redis", po::value<string>(&REDIS_HOST)->default_value(REDIS_HOST), "Redis host to use");
+	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randmoness)");
 	desc.add_options()("aerospike", po::value<string>(&AEROSPIKE_HOST)->default_value(AEROSPIKE_HOST), "Aerospike host to use");
 
 	po::variables_map vm;
@@ -134,6 +137,8 @@ int main(int argc, char* argv[])
 		LOG(WARNING, L"Can't use FS strawman storage in parallel. PARALLEL will be set to false.");
 		PARALLEL = false;
 	}
+
+	srand(SEED);
 
 #pragma endregion
 
@@ -158,7 +163,7 @@ int main(int argc, char* argv[])
 			MAX_VALUE	= max(salary, MAX_VALUE);
 			MIN_VALUE	= min(salary, MIN_VALUE);
 
-			LOG(TRACE, boost::wformat(L"Salary: %9.2f, data length: %3i") % numberToSalary(salary) % line.size());
+			LOG(ALL, boost::wformat(L"Salary: %9.2f, data length: %3i") % numberToSalary(salary) % line.size());
 
 			oramIndex.push_back({i, PathORAM::fromText(line, ORAM_BLOCK_SIZE)});
 			treeIndex.push_back({salary, BPlusTree::bytesFromNumber(i)});
@@ -176,7 +181,7 @@ int main(int argc, char* argv[])
 			auto left  = salaryToNumber(query[0]);
 			auto right = salaryToNumber(query[1]);
 
-			LOG(TRACE, boost::wformat(L"Query: {%9.2f, %9.2f}") % numberToSalary(left) % numberToSalary(right));
+			LOG(ALL, boost::wformat(L"Query: {%9.2f, %9.2f}") % numberToSalary(left) % numberToSalary(right));
 
 			queries.push_back({left, right});
 		}
@@ -230,6 +235,7 @@ int main(int argc, char* argv[])
 	LOG_PARAMETER(TREE_BLOCK_SIZE);
 	LOG_PARAMETER(USE_ORAMS);
 	LOG_PARAMETER(BATCH_SIZE);
+	LOG_PARAMETER(SEED);
 	LOG_PARAMETER(DP_K);
 	LOG_PARAMETER(DP_BUCKETS);
 	LOG_PARAMETER(DP_BETA);
@@ -317,8 +323,6 @@ int main(int argc, char* argv[])
 			if (generate)
 			{
 				oram->load(indices);
-				oramPositionMap->storeToFile(filename(ORAM_MAP_FILE, i));
-				oramStash->storeToFile(filename(ORAM_STASH_FILE, i));
 			}
 
 			promise->set_value({oramStorage, oramPositionMap, oramStash, oram});
@@ -473,6 +477,13 @@ int main(int argc, char* argv[])
 
 			LOG(DEBUG, boost::wformat(L"For query {%9.2f, %9.2f} the result size is %6i (%6i with noise) (completed in %7s, or %7s μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % returned.size() % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : L"0 ns"));
 		}
+
+		for (auto i = 0uLL; i < oramSets.size(); i++)
+		{
+			static_pointer_cast<PathORAM::InMemoryPositionMapAdapter>(get<1>(oramSets[i]))->storeToFile(filename(ORAM_MAP_FILE, i));
+			static_pointer_cast<PathORAM::InMemoryStashAdapter>(get<2>(oramSets[i]))->storeToFile(filename(ORAM_STASH_FILE, i));
+		}
+
 #pragma endregion
 	}
 	else
@@ -635,6 +646,7 @@ int main(int argc, char* argv[])
 	PUT_PARAMETER(TREE_BLOCK_SIZE);
 	PUT_PARAMETER(USE_ORAMS);
 	PUT_PARAMETER(BATCH_SIZE);
+	PUT_PARAMETER(SEED);
 	PUT_PARAMETER(DP_BUCKETS);
 	PUT_PARAMETER(DP_K);
 	PUT_PARAMETER(DP_BETA);

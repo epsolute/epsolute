@@ -85,6 +85,7 @@ namespace DPORAM
 
 	enum LOG_LEVEL
 	{
+		ALL,
 		TRACE,
 		DEBUG,
 		INFO,
@@ -93,6 +94,7 @@ namespace DPORAM
 		CRITICAL
 	};
 	inline vector<wstring> logLevelStrings = {
+		L"ALL",
 		L"TRACE",
 		L"DEBUG",
 		L"INFO",
@@ -101,6 +103,7 @@ namespace DPORAM
 		L"CRITICAL"};
 
 	inline vector<wstring> logLevelColors = {
+		BOLDWHITE,
 		WHITE,
 		CYAN,
 		GREEN,
