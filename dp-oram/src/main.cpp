@@ -50,7 +50,7 @@ auto USE_ORAMS			   = true;
 const auto BATCH_SIZE	   = 1000;
 
 const auto DP_K = 16;
-auto DP_BETA	= 0.01;
+auto DP_BETA	= 10uLL;
 auto DP_EPSILON = 10;
 auto DP_BUCKETS = 0uLL;
 
@@ -93,7 +93,7 @@ int main(int argc, char* argv[])
 
 	auto oramsNumberCheck	= [](int v) { if (v < 1 || v > 96) { throw Exception("malformed --oramsNumber"); } };
 	auto epsilonCheck		= [](int v) { if (v < 1 ) { throw Exception("malformed --epsilon, mist be >= 1"); } };
-	auto betaCheck			= [](double v) { if (v >= 1.0 || v < 0) { throw Exception("malformed --beta, must be [0, 1)"); } };
+	auto betaCheck			= [](number v) { if (v < 1) { throw Exception("malformed --beta, must be >= 1"); } };
 	auto bucketsNumberCheck = [](int v) {
 		auto logV = log(v) / log(DP_K);
 		if (ceil(logV) != floor(logV))
@@ -111,7 +111,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("oramsNumber,n", po::value<int>(&ORAMS_NUMBER)->notifier(oramsNumberCheck)->default_value(ORAMS_NUMBER), "the number of parallel ORAMs to use");
 	desc.add_options()("bucketsNumber,b", po::value<number>(&DP_BUCKETS)->notifier(bucketsNumberCheck)->default_value(DP_BUCKETS), "the number of buckets for DP (if 0, will choose max buckets such that less than N)");
 	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(USE_ORAMS), "if set will use ORAMs, otherwise each query will download everythin every query");
-	desc.add_options()("beta", po::value<double>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP");
+	desc.add_options()("beta", po::value<number>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP; x such that beta = 2^{-x}");
 	desc.add_options()("epsilon", po::value<int>(&DP_EPSILON)->notifier(epsilonCheck)->default_value(DP_EPSILON), "epsilon parameter for DP");
 	desc.add_options()("count", po::value<number>(&COUNT)->default_value(COUNT), "number of synthetic records to generate");
 	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
@@ -359,12 +359,12 @@ int main(int argc, char* argv[])
 #pragma region DP
 
 		auto levels = (int)(log(DP_BUCKETS) / log(DP_K));
-		auto mu		= optimalMu(DP_BETA, DP_K, DP_BUCKETS, DP_EPSILON);
+		auto mu		= optimalMu(pow(2, -DP_BETA), DP_K, DP_BUCKETS, DP_EPSILON);
 		map<pair<number, number>, number> noise;
 		auto buckets = DP_BUCKETS;
 		for (auto l = 0; l < levels; l++)
 		{
-			for (auto i = 0; i < buckets; i++)
+			for (auto i = 0uLL; i < buckets; i++)
 			{
 				noise[{l, i}] = (int)sampleLaplace(mu, (double)levels / DP_EPSILON);
 			}
@@ -405,7 +405,7 @@ int main(int argc, char* argv[])
 
 			// DP add noise
 			auto noiseNodes	  = BRC(DP_K, fromBucket, toBucket);
-			auto noiseRecords = 0;
+			auto noiseRecords = 0uLL;
 			for (auto node : noiseNodes)
 			{
 				noiseRecords += noise[node];
