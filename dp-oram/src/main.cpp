@@ -38,16 +38,17 @@ void LOG(LOG_LEVEL level, boost::wformat message);
 
 #pragma region GLOBALS
 
-auto COUNT				   = 1000uLL;
-auto ORAM_BLOCK_SIZE	   = 256uLL;
-auto ORAM_LOG_CAPACITY	   = 10uLL;
-auto ORAMS_NUMBER		   = 1;
-auto PARALLEL			   = true;
-const auto ORAM_Z		   = 3uLL;
-const auto TREE_BLOCK_SIZE = 64uLL;
-auto ORAM_STORAGE		   = FileSystem;
-auto USE_ORAMS			   = true;
-const auto BATCH_SIZE	   = 1000;
+auto COUNT					 = 1000uLL;
+auto ORAM_BLOCK_SIZE		 = 256uLL;
+auto ORAM_LOG_CAPACITY		 = 10uLL;
+auto ORAMS_NUMBER			 = 1;
+auto PARALLEL				 = true;
+const auto ORAM_Z			 = 3uLL;
+const auto TREE_BLOCK_SIZE	 = 64uLL;
+auto ORAM_STORAGE			 = FileSystem;
+auto USE_ORAMS				 = true;
+const auto BATCH_SIZE		 = 1000;
+const auto SYNTHETIC_QUERIES = 100;
 
 const auto DP_K = 16;
 auto DP_BETA	= 10uLL;
@@ -111,7 +112,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("parallel,p", po::value<bool>(&PARALLEL)->default_value(PARALLEL), "if set, will query orams in parallel");
 	desc.add_options()("oramStorage,s", po::value<ORAM_BACKEND>(&ORAM_STORAGE)->default_value(ORAM_STORAGE), "the ORAM backend to use");
 	desc.add_options()("oramsNumber,n", po::value<int>(&ORAMS_NUMBER)->notifier(oramsNumberCheck)->default_value(ORAMS_NUMBER), "the number of parallel ORAMs to use");
-	desc.add_options()("bucketsNumber,b", po::value<number>(&DP_BUCKETS)->notifier(bucketsNumberCheck)->default_value(DP_BUCKETS), "the number of buckets for DP (if 0, will choose max buckets such that less than N)");
+	desc.add_options()("bucketsNumber,b", po::value<number>(&DP_BUCKETS)->notifier(bucketsNumberCheck)->default_value(DP_BUCKETS), "the number of buckets for DP (if 0, will choose max buckets such that less than the domain size)");
 	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(USE_ORAMS), "if set will use ORAMs, otherwise each query will download everythin every query");
 	desc.add_options()("beta", po::value<number>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP; x such that beta = 2^{-x}");
 	desc.add_options()("epsilon", po::value<int>(&DP_EPSILON)->notifier(epsilonCheck)->default_value(DP_EPSILON), "epsilon parameter for DP");
@@ -204,7 +205,7 @@ int main(int argc, char* argv[])
 			MIN_VALUE = min(salary, MIN_VALUE);
 		}
 
-		for (number i = 0; i < COUNT / 10; i++)
+		for (number i = 0; i < SYNTHETIC_QUERIES; i++)
 		{
 			queries.push_back({salaryToNumber(to_string(8 * i + 3)), salaryToNumber(to_string(8 * i + 8))});
 		}
@@ -217,15 +218,6 @@ int main(int argc, char* argv[])
 
 	ORAM_LOG_CAPACITY = ceil(log2(COUNT / ORAMS_NUMBER)) + 1;
 
-	if (DP_BUCKETS == 0)
-	{
-		DP_BUCKETS = 1;
-		while (DP_BUCKETS * DP_K <= COUNT)
-		{
-			DP_BUCKETS *= DP_K;
-		}
-	}
-
 	LOG_PARAMETER(COUNT);
 	LOG_PARAMETER(ORAM_BLOCK_SIZE);
 	LOG_PARAMETER(ORAM_LOG_CAPACITY);
@@ -237,7 +229,6 @@ int main(int argc, char* argv[])
 	LOG_PARAMETER(BATCH_SIZE);
 	LOG_PARAMETER(SEED);
 	LOG_PARAMETER(DP_K);
-	LOG_PARAMETER(DP_BUCKETS);
 	LOG_PARAMETER(DP_BETA);
 	LOG_PARAMETER(DP_EPSILON);
 
@@ -362,19 +353,43 @@ int main(int argc, char* argv[])
 
 #pragma region DP
 
-		auto levels = (int)(log(DP_BUCKETS) / log(DP_K));
-		auto mu		= optimalMu(1.0 / (1 << DP_BETA), DP_K, DP_BUCKETS, DP_EPSILON);
-		map<pair<number, number>, number> noise;
-		auto buckets = DP_BUCKETS;
-		for (auto l = 0; l < levels; l++)
+		// IMPORTANT: salaries are in cents, but we still compute domain in dollars
+		auto DP_DOMAIN = (MAX_VALUE - MIN_VALUE) / 100;
+		if (DP_BUCKETS == 0)
 		{
-			for (auto i = 0uLL; i < buckets; i++)
+			DP_BUCKETS = 1;
+			while (DP_BUCKETS * DP_K <= DP_DOMAIN)
 			{
-				noise[{l, i}] = (int)sampleLaplace(mu, (double)levels / DP_EPSILON);
+				DP_BUCKETS *= DP_K;
 			}
-			buckets /= DP_K;
 		}
-		noise[{levels, 0}] = 0.0; // root noise is zero, because downloading all data hides everything by definition
+
+		auto DP_LEVELS = (int)(log(DP_BUCKETS) / log(DP_K));
+		auto DP_MU	   = optimalMu(1.0 / (1 << DP_BETA), DP_K, DP_BUCKETS, DP_EPSILON);
+
+		LOG_PARAMETER(DP_DOMAIN);
+		LOG_PARAMETER(MIN_VALUE);
+		LOG_PARAMETER(MAX_VALUE);
+		LOG_PARAMETER(DP_BUCKETS);
+		LOG_PARAMETER(DP_LEVELS);
+		LOG_PARAMETER(DP_MU);
+
+		vector<map<pair<number, number>, number>> noises;
+		noises.resize(ORAMS_NUMBER);
+
+		for (auto i = 0; i < ORAMS_NUMBER; i++)
+		{
+			auto buckets = DP_BUCKETS;
+			for (auto l = 0; l < DP_LEVELS; l++)
+			{
+				for (auto j = 0uLL; j < buckets; j++)
+				{
+					noises[i][{l, j}] = (int)sampleLaplace(DP_MU, (double)DP_LEVELS / DP_EPSILON);
+				}
+				buckets /= DP_K;
+			}
+			noises[i][{DP_LEVELS, 0}] = 0.0; // root noise is zero, because downloading all data hides everything by definition
+		}
 
 #pragma endregion
 
@@ -398,6 +413,7 @@ int main(int argc, char* argv[])
 			return answer;
 		};
 
+		auto queryIndex = 1;
 		for (auto query : queries)
 		{
 			auto start = chrono::steady_clock::now();
@@ -408,19 +424,9 @@ int main(int argc, char* argv[])
 			auto oramIds = tree->search(from, to);
 
 			// DP add noise
-			auto noiseNodes	  = BRC(DP_K, fromBucket, toBucket);
-			auto noiseRecords = 0uLL;
-			for (auto node : noiseNodes)
-			{
-				noiseRecords += noise[node];
-			}
-			for (auto i = 0uLL; i < noiseRecords; i++)
-			{
-				oramIds.push_back(BPlusTree::bytesFromNumber(PathORAM::getRandomUInt(COUNT)));
-			}
+			auto noiseNodes = BRC(DP_K, fromBucket, toBucket);
 
-			LOG(TRACE, boost::wformat(L"Query {%9.2f, %9.2f} was transformed to {%9.2f, %9.2f}, buckets [%4i, %4i], added %4i noisy records") % numberToSalary(query.first) % numberToSalary(query.second) % numberToSalary(from) % numberToSalary(to) % fromBucket % toBucket % noiseRecords);
-
+			// add real block IDs
 			vector<vector<number>> blockIds;
 			blockIds.resize(ORAMS_NUMBER);
 			for (auto oramId : oramIds)
@@ -428,6 +434,22 @@ int main(int argc, char* argv[])
 				auto blockId = BPlusTree::numberFromBytes(oramId);
 				blockIds[blockId % ORAMS_NUMBER].push_back(blockId / ORAMS_NUMBER);
 			}
+
+			// add noisy fake block IDs
+			auto totalNoise = 0uLL;
+			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+			{
+				for (auto node : noiseNodes)
+				{
+					for (auto j = 0uLL; j < noises[i][node]; j++)
+					{
+						blockIds[i].push_back(PathORAM::getRandomUInt(COUNT / ORAMS_NUMBER));
+					}
+					totalNoise += noises[i][node];
+				}
+			}
+
+			LOG(TRACE, boost::wformat(L"Query {%9.2f, %9.2f} was transformed to {%9.2f, %9.2f}, buckets [%4i, %4i], added total of %4i noisy records") % numberToSalary(query.first) % numberToSalary(query.second) % numberToSalary(from) % numberToSalary(to) % fromBucket % toBucket % totalNoise);
 
 			vector<bytes> returned;
 			if (PARALLEL)
@@ -475,7 +497,8 @@ int main(int argc, char* argv[])
 			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
 			measurements.push_back({elapsed, count, returned.size()});
 
-			LOG(DEBUG, boost::wformat(L"For query {%9.2f, %9.2f} the result size is %6i (%6i with noise) (completed in %7s, or %7s μs per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % returned.size() % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : L"0 ns"));
+			LOG(DEBUG, boost::wformat(L"Query %3i / %3i : {%9.2f, %9.2f} the result size is %6i (%6i with noise) (completed in %7s, or %7s μs per record)") % queryIndex % queries.size() % numberToSalary(query.first) % numberToSalary(query.second) % count % returned.size() % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : L"0 ns"));
+			queryIndex++;
 		}
 
 		for (auto i = 0uLL; i < oramSets.size(); i++)

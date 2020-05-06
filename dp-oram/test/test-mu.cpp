@@ -38,7 +38,9 @@ namespace DPORAM
 
 	vector<tuple<double, number, number, number>> cases = {
 		{0.001, 16, 1000000, 10},
-		{0.0001, 16, 10000000, 100}};
+		{0.0001, 16, 10000000, 100},
+		{1.0 / (1 << 20), 16, 65536, 1},
+		{1.0 / (1 << 20), 16, 1048576, 1}};
 
 	INSTANTIATE_TEST_SUITE_P(UtilityMuSuite, UtilityMuTest, testing::ValuesIn(cases));
 }
