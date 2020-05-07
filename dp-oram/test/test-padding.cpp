@@ -7,14 +7,14 @@ using namespace std;
 
 namespace DPORAM
 {
-	class UtilityPaddingTest : public ::testing::Test
+	class UtilityPaddingTest : public testing::TestWithParam<tuple<number, number, number>>
 	{
 	};
 
-	TEST_F(UtilityPaddingTest, Padding)
+	TEST_P(UtilityPaddingTest, Padding)
 	{
-		auto const min = 5, max = 106, buckets = 7;
-		auto const domain = max - min;
+		auto [min, max, buckets] = GetParam();
+		auto const domain		 = max - min;
 
 		for (auto from = min; from <= max; from++)
 		{
@@ -40,6 +40,19 @@ namespace DPORAM
 			}
 		}
 	}
+
+	vector<tuple<number, number, number>> cases = {
+		{0, 106, 7},
+		{0, 999, 256},
+	};
+
+	string printTestName(testing::TestParamInfo<tuple<number, number, number>> input)
+	{
+		auto [min, max, buckets] = input.param;
+		return boost::str(boost::format("min%1%max%2%buckets%3%") % min % max % buckets);
+	}
+
+	INSTANTIATE_TEST_SUITE_P(UtilityPaddingSuite, UtilityPaddingTest, testing::ValuesIn(cases), printTestName);
 }
 
 int main(int argc, char** argv)

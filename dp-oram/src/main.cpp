@@ -24,6 +24,9 @@ using namespace DPORAM;
 namespace po = boost::program_options;
 namespace pt = boost::property_tree;
 
+// WARNING: this is supposed to be greater than the absolute value of the smallest element in the dataset
+#define OFFSET 200000
+
 wstring timeToString(long long time);
 number salaryToNumber(string salary);
 double numberToSalary(number salary);
@@ -41,7 +44,7 @@ void LOG(LOG_LEVEL level, boost::wformat message);
 auto COUNT					 = 1000uLL;
 auto ORAM_BLOCK_SIZE		 = 256uLL;
 auto ORAM_LOG_CAPACITY		 = 10uLL;
-auto ORAMS_NUMBER			 = 1;
+auto ORAMS_NUMBER			 = 1uLL;
 auto PARALLEL				 = true;
 const auto ORAM_Z			 = 3uLL;
 const auto TREE_BLOCK_SIZE	 = 64uLL;
@@ -94,7 +97,7 @@ int main(int argc, char* argv[])
 
 #pragma region COMMAND_LINE_ARGUMENTS
 
-	auto oramsNumberCheck	= [](int v) { if (v < 1 || v > 96) { throw Exception("malformed --oramsNumber"); } };
+	auto oramsNumberCheck	= [](number v) { if (v < 1) { throw Exception("malformed --oramsNumber"); } };
 	auto epsilonCheck		= [](int v) { if (v < 1 ) { throw Exception("malformed --epsilon, mist be >= 1"); } };
 	auto betaCheck			= [](number v) { if (v < 1) { throw Exception("malformed --beta, must be >= 1"); } };
 	auto bucketsNumberCheck = [](int v) {
@@ -111,7 +114,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("readInputs,r", po::value<bool>()->default_value(true), "if set, will read inputs from files");
 	desc.add_options()("parallel,p", po::value<bool>(&PARALLEL)->default_value(PARALLEL), "if set, will query orams in parallel");
 	desc.add_options()("oramStorage,s", po::value<ORAM_BACKEND>(&ORAM_STORAGE)->default_value(ORAM_STORAGE), "the ORAM backend to use");
-	desc.add_options()("oramsNumber,n", po::value<int>(&ORAMS_NUMBER)->notifier(oramsNumberCheck)->default_value(ORAMS_NUMBER), "the number of parallel ORAMs to use");
+	desc.add_options()("oramsNumber,n", po::value<number>(&ORAMS_NUMBER)->notifier(oramsNumberCheck)->default_value(ORAMS_NUMBER), "the number of parallel ORAMs to use");
 	desc.add_options()("bucketsNumber,b", po::value<number>(&DP_BUCKETS)->notifier(bucketsNumberCheck)->default_value(DP_BUCKETS), "the number of buckets for DP (if 0, will choose max buckets such that less than the domain size)");
 	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(USE_ORAMS), "if set will use ORAMs, otherwise each query will download everythin every query");
 	desc.add_options()("beta", po::value<number>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP; x such that beta = 2^{-x}");
@@ -147,15 +150,18 @@ int main(int argc, char* argv[])
 
 	LOG(INFO, L"Constructing data set...");
 
-	vector<pair<number, bytes>> oramIndex;
+	vector<vector<pair<number, bytes>>> oramsIndex;
+	oramsIndex.resize(ORAMS_NUMBER);
+
+	// vector<pair<salary, bytes(ORAMid, blockId)>>
 	vector<pair<number, bytes>> treeIndex;
+
 	vector<pair<number, number>> queries;
 	if (vm["readInputs"].as<bool>())
 	{
 		ifstream dataFile(DATA_FILE);
 
 		string line = "";
-		auto i		= 0;
 		while (getline(dataFile, line))
 		{
 			vector<string> record;
@@ -163,12 +169,18 @@ int main(int argc, char* argv[])
 			auto salary = salaryToNumber(record[7]);
 			MAX_VALUE	= max(salary, MAX_VALUE);
 			MIN_VALUE	= min(salary, MIN_VALUE);
+			if (MAX_VALUE >= ULLONG_MAX / 2)
+			{
+				throw Exception(boost::format("Looks like one of the data points (%1%) is smaller than minus OFFSET (-%2%)") % record[7] % OFFSET);
+			}
 
 			LOG(ALL, boost::wformat(L"Salary: %9.2f, data length: %3i") % numberToSalary(salary) % line.size());
 
-			oramIndex.push_back({i, PathORAM::fromText(line, ORAM_BLOCK_SIZE)});
-			treeIndex.push_back({salary, BPlusTree::bytesFromNumber(i)});
-			i++;
+			auto oramId	 = PathORAM::hashToNumber(BPlusTree::bytesFromNumber(salary), ORAMS_NUMBER);
+			auto blockId = oramsIndex[oramId].size();
+
+			oramsIndex[oramId].push_back({blockId, PathORAM::fromText(line, ORAM_BLOCK_SIZE)});
+			treeIndex.push_back({salary, BPlusTree::concatNumbers(2, oramId, blockId)});
 		}
 		dataFile.close();
 
@@ -198,11 +210,15 @@ int main(int argc, char* argv[])
 				text << to_string(i) + (j < 9 ? "," : "");
 			}
 			auto salary = salaryToNumber(to_string(i));
-			oramIndex.push_back({i, PathORAM::fromText(text.str(), ORAM_BLOCK_SIZE)});
-			treeIndex.push_back({salary, BPlusTree::bytesFromNumber(i)});
 
 			MAX_VALUE = max(salary, MAX_VALUE);
 			MIN_VALUE = min(salary, MIN_VALUE);
+
+			auto oramId	 = PathORAM::hashToNumber(BPlusTree::bytesFromNumber(salary), ORAMS_NUMBER);
+			auto blockId = oramsIndex[oramId].size();
+
+			oramsIndex[oramId].push_back({blockId, PathORAM::fromText(text.str(), ORAM_BLOCK_SIZE)});
+			treeIndex.push_back({salary, BPlusTree::concatNumbers(2, oramId, blockId)});
 		}
 
 		for (number i = 0; i < SYNTHETIC_QUERIES; i++)
@@ -211,10 +227,11 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	COUNT = oramIndex.size();
-
-	auto sizes		= transform<pair<number, bytes>, int>(oramIndex, [](pair<number, bytes> val) { return val.second.size(); });
-	ORAM_BLOCK_SIZE = *max_element(sizes.begin(), sizes.end());
+	COUNT = 0;
+	for (auto&& index : oramsIndex)
+	{
+		COUNT += index.size();
+	}
 
 	ORAM_LOG_CAPACITY = ceil(log2(COUNT / ORAMS_NUMBER)) + 1;
 
@@ -255,13 +272,6 @@ int main(int argc, char* argv[])
 
 	if (USE_ORAMS)
 	{
-		vector<vector<pair<number, bytes>>> oramIndexBrokenUp;
-		oramIndexBrokenUp.resize(ORAMS_NUMBER);
-		for (auto record : oramIndex)
-		{
-			oramIndexBrokenUp[record.first % ORAMS_NUMBER].push_back({record.first / ORAMS_NUMBER, record.second});
-		}
-
 		auto loadOram = [](int i, vector<pair<number, bytes>> indices, bool generate, string redisHost, string aerospikeHost, promise<ORAMSet>* promise) -> void {
 			bytes oramKey;
 			if (generate)
@@ -330,7 +340,7 @@ int main(int argc, char* argv[])
 			threads[i] = thread(
 				loadOram,
 				i,
-				oramIndexBrokenUp[i],
+				oramsIndex[i],
 				vm["generateIndices"].as<bool>(),
 				REDIS_HOST,
 				AEROSPIKE_HOST,
@@ -368,8 +378,8 @@ int main(int argc, char* argv[])
 		auto DP_MU	   = optimalMu(1.0 / (1 << DP_BETA), DP_K, DP_BUCKETS, DP_EPSILON);
 
 		LOG_PARAMETER(DP_DOMAIN);
-		LOG_PARAMETER(MIN_VALUE);
-		LOG_PARAMETER(MAX_VALUE);
+		LOG_PARAMETER(numberToSalary(MIN_VALUE));
+		LOG_PARAMETER(numberToSalary(MAX_VALUE));
 		LOG_PARAMETER(DP_BUCKETS);
 		LOG_PARAMETER(DP_LEVELS);
 		LOG_PARAMETER(DP_MU);
@@ -421,7 +431,7 @@ int main(int argc, char* argv[])
 			// DP padding
 			auto [fromBucket, toBucket, from, to] = padToBuckets(query, MIN_VALUE, MAX_VALUE, DP_BUCKETS);
 
-			auto oramIds = tree->search(from, to);
+			auto oramsAndBlocks = tree->search(from, to);
 
 			// DP add noise
 			auto noiseNodes = BRC(DP_K, fromBucket, toBucket);
@@ -429,10 +439,13 @@ int main(int argc, char* argv[])
 			// add real block IDs
 			vector<vector<number>> blockIds;
 			blockIds.resize(ORAMS_NUMBER);
-			for (auto oramId : oramIds)
+			for (auto pair : oramsAndBlocks)
 			{
-				auto blockId = BPlusTree::numberFromBytes(oramId);
-				blockIds[blockId % ORAMS_NUMBER].push_back(blockId / ORAMS_NUMBER);
+				auto fromTree = BPlusTree::deconstructNumbers(pair);
+				auto oramId	  = fromTree[0];
+				auto blockId  = fromTree[1];
+
+				blockIds[oramId].push_back(blockId);
 			}
 
 			// add noisy fake block IDs
@@ -443,7 +456,7 @@ int main(int argc, char* argv[])
 				{
 					for (auto j = 0uLL; j < noises[i][node]; j++)
 					{
-						blockIds[i].push_back(PathORAM::getRandomUInt(COUNT / ORAMS_NUMBER));
+						blockIds[i].push_back(PathORAM::getRandomUInt(oramsIndex[i].size()));
 					}
 					totalNoise += noises[i][node];
 				}
@@ -541,16 +554,21 @@ int main(int argc, char* argv[])
 		}
 
 		vector<pair<number, vector<pair<number, bytes>>>> batch;
-		for (number i = 0; i < oramIndex.size(); i++)
+		auto count = 0;
+		for (number i = 0; i < ORAMS_NUMBER; i++)
 		{
-			batch.push_back({i, {oramIndex[i]}});
-			if (i % BATCH_SIZE == 0 || i == oramIndex.size() - 1)
+			for (number j = 0; j < oramsIndex[i].size(); j++)
 			{
-				if (batch.size() > 0)
+				batch.push_back({count, {oramsIndex[i][j]}});
+				count++;
+				if (i % BATCH_SIZE == 0 || i == oramsIndex[i].size() - 1)
 				{
-					storage->set(batch);
+					if (batch.size() > 0)
+					{
+						storage->set(batch);
+					}
+					batch.clear();
 				}
-				batch.clear();
 			}
 		}
 
@@ -744,13 +762,13 @@ wstring timeToString(long long time)
 number salaryToNumber(string salary)
 {
 	auto salaryDouble = stod(salary) * 100;
-	auto salaryNumber = (long long)salaryDouble + (LLONG_MAX / 4);
+	auto salaryNumber = (long long)salaryDouble + OFFSET;
 	return (number)salaryNumber;
 }
 
 double numberToSalary(number salary)
 {
-	return ((long long)salary - (LLONG_MAX / 4)) * 0.01;
+	return ((long long)salary - OFFSET) * 0.01;
 }
 
 string filename(string filename, int i)

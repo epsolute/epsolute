@@ -29,7 +29,7 @@
 				"--useOrams",
 				"${input:useOrams}",
 				"--verbosity",
-				"DEBUG",
+				"TRACE",
 				"--count",
 				"${input:count}",
 			],
