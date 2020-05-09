@@ -77,6 +77,10 @@ string AEROSPIKE_HOST = "127.0.0.1";
 const auto DATA_FILE  = "../../experiments-scripts/scripts/data.csv";
 const auto QUERY_FILE = "../../experiments-scripts/scripts/query.csv";
 
+auto FILE_LOGGING = false;
+string logName;
+ofstream logFile;
+
 #define LOG_PARAMETER(parameter) LOG(INFO, boost::wformat(L"%1% = %2%") % #parameter % parameter)
 #define PUT_PARAMETER(parameter) root.put(#parameter, parameter);
 
@@ -123,6 +127,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("epsilon", po::value<int>(&DP_EPSILON)->notifier(epsilonCheck)->default_value(DP_EPSILON), "epsilon parameter for DP");
 	desc.add_options()("count", po::value<number>(&COUNT)->default_value(COUNT), "number of synthetic records to generate");
 	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
+	desc.add_options()("fileLogging", po::value<bool>(&FILE_LOGGING)->default_value(FILE_LOGGING), "if set, log stream will be duplicated to file (noticeably slows down simulation)");
 	desc.add_options()("redis", po::value<string>(&REDIS_HOST)->default_value(REDIS_HOST), "Redis host to use");
 	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randmoness)");
 	desc.add_options()("aerospike", po::value<string>(&AEROSPIKE_HOST)->default_value(AEROSPIKE_HOST), "Aerospike host to use");
@@ -135,6 +140,18 @@ int main(int argc, char* argv[])
 	{
 		cout << desc << "\n";
 		exit(1);
+	}
+
+	// open log file
+	auto timestamp = chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count();
+	auto rawtime   = time(nullptr);
+	stringstream timestream;
+	timestream << put_time(localtime(&rawtime), "%Y-%m-%d-%H-%M-%S");
+	auto logName = boost::str(boost::format("%1%--%2%--%3%") % SEED % timestream.str() % timestamp);
+
+	if (FILE_LOGGING)
+	{
+		logFile.open(boost::str(boost::format("./results/%1%.log") % logName), ios::out);
 	}
 
 	if (
@@ -245,6 +262,7 @@ int main(int argc, char* argv[])
 	LOG_PARAMETER(ORAM_Z);
 	LOG_PARAMETER(TREE_BLOCK_SIZE);
 	LOG_PARAMETER(USE_ORAMS);
+	LOG_PARAMETER(FILE_LOGGING);
 	LOG_PARAMETER(VIRTUAL_REQUESTS);
 	LOG_PARAMETER(BATCH_SIZE);
 	LOG_PARAMETER(SEED);
@@ -723,6 +741,7 @@ int main(int argc, char* argv[])
 	PUT_PARAMETER(ORAM_Z);
 	PUT_PARAMETER(TREE_BLOCK_SIZE);
 	PUT_PARAMETER(USE_ORAMS);
+	PUT_PARAMETER(FILE_LOGGING);
 	PUT_PARAMETER(VIRTUAL_REQUESTS);
 	PUT_PARAMETER(BATCH_SIZE);
 	PUT_PARAMETER(SEED);
@@ -735,8 +754,7 @@ int main(int argc, char* argv[])
 	root.put("REDIS", REDIS_HOST);
 	root.put("AEROSPIKE", AEROSPIKE_HOST);
 
-	auto timestamp = chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count();
-	root.put("TIMESTAMP", timestamp);
+	root.put("LOG_FILENAME", logName);
 
 	pt::ptree aggregates;
 	aggregates.put("averageRecords", averageRecords);
@@ -747,15 +765,16 @@ int main(int argc, char* argv[])
 
 	root.add_child("queries", overheadsNode);
 
-	auto rawtime = time(nullptr);
-	stringstream timestream;
-	timestream << put_time(localtime(&rawtime), "%Y-%m-%d-%H-%M-%S");
-
-	auto filename = boost::str(boost::format("./results/%1%-%2%.json") % timestream.str() % timestamp);
+	auto filename = boost::str(boost::format("./results/%1%.json") % logName);
 
 	pt::write_json(filename, root);
 
 	LOG(INFO, boost::wformat(L"Log written to %1%") % converter.from_bytes(filename));
+
+	if (FILE_LOGGING)
+	{
+		logFile.close();
+	}
 
 #pragma endregion
 
@@ -836,7 +855,13 @@ void LOG(LOG_LEVEL level, wstring message)
 	if (level >= __logLevel)
 	{
 		auto t = time(nullptr);
-		wcout << L"[" << put_time(localtime(&t), L"%d/%m/%Y %H:%M:%S") << "] " << setw(8) << logLevelColors[level] << logLevelStrings[level] << L": " << message << RESET << endl;
+		wcout << L"[" << put_time(localtime(&t), L"%d/%m/%Y %H:%M:%S") << L"] " << setw(8) << logLevelColors[level] << logLevelStrings[level] << L": " << message << RESET << endl;
+
+		if (FILE_LOGGING)
+		{
+			wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+			logFile << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(8) << converter.to_bytes(logLevelStrings[level]) << ": " << converter.to_bytes(message) << endl;
+		}
 	}
 }
 

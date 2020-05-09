@@ -32,6 +32,8 @@
 				"TRACE",
 				"--count",
 				"${input:count}",
+				"--virtualRequests",
+				"${input:virtualRequests}",
 			],
 			"cwd": "${workspaceFolder}/dp-oram/",
 			"preLaunchTask": "build"
@@ -135,6 +137,16 @@
 				"50000"
 			],
 			"default": "10000"
+		},
+		{
+			"id": "virtualRequests",
+			"type": "pickString",
+			"description": "Pick value for --virtualRequests",
+			"options": [
+				"true",
+				"false"
+			],
+			"default": "false"
 		}
 	]
 }
