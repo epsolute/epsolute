@@ -25,7 +25,7 @@ namespace po = boost::program_options;
 namespace pt = boost::property_tree;
 
 // WARNING: this is supposed to be greater than the absolute value of the smallest element in the dataset
-#define OFFSET 200000
+#define OFFSET 20000000
 
 wstring timeToString(long long time);
 number salaryToNumber(string salary);
@@ -50,6 +50,7 @@ const auto ORAM_Z			 = 3uLL;
 const auto TREE_BLOCK_SIZE	 = 64uLL;
 auto ORAM_STORAGE			 = FileSystem;
 auto USE_ORAMS				 = true;
+auto VIRTUAL_REQUESTS		 = false;
 const auto BATCH_SIZE		 = 1000;
 const auto SYNTHETIC_QUERIES = 100;
 
@@ -117,6 +118,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("oramsNumber,n", po::value<number>(&ORAMS_NUMBER)->notifier(oramsNumberCheck)->default_value(ORAMS_NUMBER), "the number of parallel ORAMs to use");
 	desc.add_options()("bucketsNumber,b", po::value<number>(&DP_BUCKETS)->notifier(bucketsNumberCheck)->default_value(DP_BUCKETS), "the number of buckets for DP (if 0, will choose max buckets such that less than the domain size)");
 	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(USE_ORAMS), "if set will use ORAMs, otherwise each query will download everythin every query");
+	desc.add_options()("virtualRequests", po::value<bool>(&VIRTUAL_REQUESTS)->default_value(VIRTUAL_REQUESTS), "if set will only simulate ORAM queries, not actually make them");
 	desc.add_options()("beta", po::value<number>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP; x such that beta = 2^{-x}");
 	desc.add_options()("epsilon", po::value<int>(&DP_EPSILON)->notifier(epsilonCheck)->default_value(DP_EPSILON), "epsilon parameter for DP");
 	desc.add_options()("count", po::value<number>(&COUNT)->default_value(COUNT), "number of synthetic records to generate");
@@ -243,6 +245,7 @@ int main(int argc, char* argv[])
 	LOG_PARAMETER(ORAM_Z);
 	LOG_PARAMETER(TREE_BLOCK_SIZE);
 	LOG_PARAMETER(USE_ORAMS);
+	LOG_PARAMETER(VIRTUAL_REQUESTS);
 	LOG_PARAMETER(BATCH_SIZE);
 	LOG_PARAMETER(SEED);
 	LOG_PARAMETER(DP_K);
@@ -268,7 +271,8 @@ int main(int argc, char* argv[])
 		boost::filesystem::create_directories(FILES_DIR);
 	}
 
-	vector<tuple<number, number, number>> measurements;
+	// vector<tuple<elapsed, real, padding, noise, total>>
+	vector<tuple<number, number, number, number, number>> measurements;
 
 	if (USE_ORAMS)
 	{
@@ -334,24 +338,31 @@ int main(int argc, char* argv[])
 		promise<ORAMSet> promises[ORAMS_NUMBER];
 		future<ORAMSet> futures[ORAMS_NUMBER];
 
-		for (auto i = 0; i < ORAMS_NUMBER; i++)
+		if (!VIRTUAL_REQUESTS)
 		{
-			futures[i] = promises[i].get_future();
-			threads[i] = thread(
-				loadOram,
-				i,
-				oramsIndex[i],
-				vm["generateIndices"].as<bool>(),
-				REDIS_HOST,
-				AEROSPIKE_HOST,
-				&promises[i]);
-		}
+			for (auto i = 0; i < ORAMS_NUMBER; i++)
+			{
+				futures[i] = promises[i].get_future();
+				threads[i] = thread(
+					loadOram,
+					i,
+					oramsIndex[i],
+					vm["generateIndices"].as<bool>(),
+					REDIS_HOST,
+					AEROSPIKE_HOST,
+					&promises[i]);
+			}
 
-		for (auto i = 0; i < ORAMS_NUMBER; i++)
+			for (auto i = 0; i < ORAMS_NUMBER; i++)
+			{
+				auto result = futures[i].get();
+				threads[i].join();
+				oramSets.push_back(result);
+			}
+		}
+		else
 		{
-			auto result = futures[i].get();
-			threads[i].join();
-			oramSets.push_back(result);
+			oramSets.resize(ORAMS_NUMBER);
 		}
 
 		auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), vm["generateIndices"].as<bool>());
@@ -464,60 +475,79 @@ int main(int argc, char* argv[])
 
 			LOG(TRACE, boost::wformat(L"Query {%9.2f, %9.2f} was transformed to {%9.2f, %9.2f}, buckets [%4i, %4i], added total of %4i noisy records") % numberToSalary(query.first) % numberToSalary(query.second) % numberToSalary(from) % numberToSalary(to) % fromBucket % toBucket % totalNoise);
 
-			vector<bytes> returned;
-			if (PARALLEL)
+			number realRecordsNumber  = 0;
+			number totalRecordsNumber = 0;
+
+			if (!VIRTUAL_REQUESTS)
 			{
-				thread threads[ORAMS_NUMBER];
-				promise<vector<bytes>> promises[ORAMS_NUMBER];
-				future<vector<bytes>> futures[ORAMS_NUMBER];
-
-				for (auto i = 0; i < ORAMS_NUMBER; i++)
+				vector<bytes> returned;
+				if (PARALLEL)
 				{
-					futures[i] = promises[i].get_future();
-					threads[i] = thread(queryOram, blockIds[i], orams[i], &promises[i]);
-				}
+					thread threads[ORAMS_NUMBER];
+					promise<vector<bytes>> promises[ORAMS_NUMBER];
+					future<vector<bytes>> futures[ORAMS_NUMBER];
 
-				for (auto i = 0; i < ORAMS_NUMBER; i++)
-				{
-					auto result = futures[i].get();
-					threads[i].join();
-					returned.insert(returned.end(), result.begin(), result.end());
+					for (auto i = 0; i < ORAMS_NUMBER; i++)
+					{
+						futures[i] = promises[i].get_future();
+						threads[i] = thread(queryOram, blockIds[i], orams[i], &promises[i]);
+					}
+
+					for (auto i = 0; i < ORAMS_NUMBER; i++)
+					{
+						auto result = futures[i].get();
+						threads[i].join();
+						returned.insert(returned.end(), result.begin(), result.end());
+					}
 				}
+				else
+				{
+					for (auto i = 0; i < ORAMS_NUMBER; i++)
+					{
+						auto result = queryOram(blockIds[i], orams[i], NULL);
+						returned.insert(returned.end(), result.begin(), result.end());
+					}
+				}
+				for (auto record : returned)
+				{
+					auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
+
+					vector<string> broken;
+					boost::algorithm::split(broken, text, boost::is_any_of(","));
+					auto salary = salaryToNumber(broken[7]);
+
+					if (salary >= query.first && salary <= query.second)
+					{
+						realRecordsNumber++;
+					}
+				}
+				totalRecordsNumber = returned.size();
 			}
 			else
 			{
-				for (auto i = 0; i < ORAMS_NUMBER; i++)
+				realRecordsNumber = tree->search(query.first, query.second).size();
+				for (auto&& blocks : blockIds)
 				{
-					auto result = queryOram(blockIds[i], orams[i], NULL);
-					returned.insert(returned.end(), result.begin(), result.end());
+					totalRecordsNumber += blocks.size();
 				}
 			}
-			auto count = 0;
-			for (auto record : returned)
-			{
-				auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
 
-				vector<string> broken;
-				boost::algorithm::split(broken, text, boost::is_any_of(","));
-				auto salary = salaryToNumber(broken[7]);
-
-				if (salary >= query.first && salary <= query.second)
-				{
-					count++;
-				}
-			}
+			auto paddingRecordsNumber = totalRecordsNumber >= (totalNoise + realRecordsNumber) ? totalRecordsNumber - totalNoise - realRecordsNumber : 0;
 
 			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
-			measurements.push_back({elapsed, count, returned.size()});
+			measurements.push_back({elapsed, realRecordsNumber, paddingRecordsNumber, totalNoise, totalRecordsNumber});
 
-			LOG(DEBUG, boost::wformat(L"Query %3i / %3i : {%9.2f, %9.2f} the result size is %6i (%6i with noise) (completed in %7s, or %7s μs per record)") % queryIndex % queries.size() % numberToSalary(query.first) % numberToSalary(query.second) % count % returned.size() % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : L"0 ns"));
+			LOG(DEBUG, boost::wformat(L"Query %3i / %3i : {%9.2f, %9.2f} the real records %6i ( +%6i padding, +%6i noise, %6i total) (%7s, or %7s / record)") % queryIndex % queries.size() % numberToSalary(query.first) % numberToSalary(query.second) % realRecordsNumber % paddingRecordsNumber % totalNoise % totalRecordsNumber % timeToString(elapsed) % (realRecordsNumber > 0 ? timeToString(elapsed / realRecordsNumber) : L"0 ns"));
 			queryIndex++;
 		}
 
-		for (auto i = 0uLL; i < oramSets.size(); i++)
+		if (!VIRTUAL_REQUESTS)
 		{
-			static_pointer_cast<PathORAM::InMemoryPositionMapAdapter>(get<1>(oramSets[i]))->storeToFile(filename(ORAM_MAP_FILE, i));
-			static_pointer_cast<PathORAM::InMemoryStashAdapter>(get<2>(oramSets[i]))->storeToFile(filename(ORAM_STASH_FILE, i));
+			for (auto i = 0uLL; i < oramSets.size(); i++)
+			{
+				static_pointer_cast<PathORAM::InMemoryPositionMapAdapter>(get<1>(oramSets[i]))->storeToFile(filename(ORAM_MAP_FILE, i));
+				static_pointer_cast<PathORAM::InMemoryStashAdapter>(get<2>(oramSets[i]))->storeToFile(filename(ORAM_STASH_FILE, i));
+			}
 		}
 
 #pragma endregion
@@ -644,7 +674,7 @@ int main(int argc, char* argv[])
 			}
 
 			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
-			measurements.push_back({elapsed, count, COUNT});
+			measurements.push_back({elapsed, count, 0, 0, COUNT});
 
 			LOG(DEBUG, boost::wformat(L"For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : L"0 ns"));
 		}
@@ -653,16 +683,21 @@ int main(int argc, char* argv[])
 
 	LOG(INFO, L"Complete!");
 
-	auto overheads = transform<tuple<number, number, number>, number>(measurements, [](tuple<number, number, number> val) { return get<0>(val); });
-	auto counts	   = transform<tuple<number, number, number>, number>(measurements, [](tuple<number, number, number> val) { return get<1>(val); });
+	auto overheads = transform<tuple<number, number, number, number, number>, number>(measurements, [](tuple<number, number, number, number, number> val) { return get<0>(val); });
+	auto reals	   = transform<tuple<number, number, number, number, number>, number>(measurements, [](tuple<number, number, number, number, number> val) { return get<1>(val); });
+	auto totals	   = transform<tuple<number, number, number, number, number>, number>(measurements, [](tuple<number, number, number, number, number> val) { return get<4>(val); });
 
-	auto sum		   = accumulate(overheads.begin(), overheads.end(), 0LL);
-	auto average	   = sum / overheads.size();
-	auto perResultItem = sum / accumulate(counts.begin(), counts.end(), 0LL);
+	auto sum	 = accumulate(overheads.begin(), overheads.end(), 0LL);
+	auto average = sum / overheads.size();
+
+	auto perResultItem = sum / accumulate(reals.begin(), reals.end(), 0LL);
+
+	auto totalRecords	= accumulate(totals.begin(), totals.end(), 0LL);
+	auto averageRecords = totalRecords / totals.size();
 
 #pragma region WRITE_JSON
 
-	LOG(INFO, boost::wformat(L"Total: %1%, average: %2% per query, %3% per result item") % timeToString(sum) % timeToString(average) % timeToString(perResultItem));
+	LOG(INFO, boost::wformat(L"Total: %1%, average: %2% per query, %3% per result item; %4% records per query") % timeToString(sum) % timeToString(average) % timeToString(perResultItem) % averageRecords);
 
 	wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
 
@@ -673,8 +708,10 @@ int main(int argc, char* argv[])
 	{
 		pt::ptree overhead;
 		overhead.put("overhead", get<0>(measurement));
-		overhead.put("realCount", get<1>(measurement));
-		overhead.put("noisyCount", get<2>(measurement));
+		overhead.put("real", get<1>(measurement));
+		overhead.put("padding", get<2>(measurement));
+		overhead.put("noise", get<3>(measurement));
+		overhead.put("total", get<4>(measurement));
 		overheadsNode.push_back({"", overhead});
 	}
 
@@ -686,6 +723,7 @@ int main(int argc, char* argv[])
 	PUT_PARAMETER(ORAM_Z);
 	PUT_PARAMETER(TREE_BLOCK_SIZE);
 	PUT_PARAMETER(USE_ORAMS);
+	PUT_PARAMETER(VIRTUAL_REQUESTS);
 	PUT_PARAMETER(BATCH_SIZE);
 	PUT_PARAMETER(SEED);
 	PUT_PARAMETER(DP_BUCKETS);
@@ -701,6 +739,7 @@ int main(int argc, char* argv[])
 	root.put("TIMESTAMP", timestamp);
 
 	pt::ptree aggregates;
+	aggregates.put("averageRecords", averageRecords);
 	aggregates.put("totalElapsed", sum);
 	aggregates.put("perQuery", average);
 	aggregates.put("perResultItem", perResultItem);
