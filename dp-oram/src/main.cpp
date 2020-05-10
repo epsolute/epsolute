@@ -290,7 +290,8 @@ int main(int argc, char* argv[])
 	}
 
 	// vector<tuple<elapsed, real, padding, noise, total>>
-	vector<tuple<number, number, number, number, number>> measurements;
+	using measurement = tuple<number, number, number, number, number>;
+	vector<measurement> measurements;
 
 	if (USE_ORAMS)
 	{
@@ -701,21 +702,21 @@ int main(int argc, char* argv[])
 
 	LOG(INFO, L"Complete!");
 
-	auto overheads = transform<tuple<number, number, number, number, number>, number>(measurements, [](tuple<number, number, number, number, number> val) { return get<0>(val); });
-	auto reals	   = transform<tuple<number, number, number, number, number>, number>(measurements, [](tuple<number, number, number, number, number> val) { return get<1>(val); });
-	auto totals	   = transform<tuple<number, number, number, number, number>, number>(measurements, [](tuple<number, number, number, number, number> val) { return get<4>(val); });
+	auto avg = [&measurements](function<number(const measurement&)> getter) -> pair<number, number> {
+		auto values = transform<measurement, number>(measurements, getter);
+		auto sum	= accumulate(values.begin(), values.end(), 0LL);
+		return {sum, sum / values.size()};
+	};
 
-	auto sum	 = accumulate(overheads.begin(), overheads.end(), 0LL);
-	auto average = sum / overheads.size();
-
-	auto perResultItem = sum / accumulate(reals.begin(), reals.end(), 0LL);
-
-	auto totalRecords	= accumulate(totals.begin(), totals.end(), 0LL);
-	auto averageRecords = totalRecords / totals.size();
+	auto [timeTotal, timePerQuery] = avg([](measurement v) { return get<0>(v); });
+	auto [realTotal, realPerQuery] = avg([](measurement v) { return get<1>(v); });
+	auto paddingPerQuery = avg([](measurement v) { return get<2>(v); }).second;
+	auto noisePerQuery = avg([](measurement v) { return get<3>(v); }).second;
+	auto totalPerQuery = avg([](measurement v) { return get<4>(v); }).second;
 
 #pragma region WRITE_JSON
 
-	LOG(INFO, boost::wformat(L"Total: %1%, average: %2% per query, %3% per result item; %4% records per query") % timeToString(sum) % timeToString(average) % timeToString(perResultItem) % averageRecords);
+	LOG(INFO, boost::wformat(L"Total: %1%, average: %2% per query, %3% per result item; (%4%+%5%+%6%=%7%) records per query") % timeToString(timeTotal) % timeToString(timePerQuery) % timeToString(timeTotal / realTotal) % realPerQuery % paddingPerQuery % noisePerQuery % totalPerQuery);
 
 	wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
 
@@ -757,10 +758,13 @@ int main(int argc, char* argv[])
 	root.put("LOG_FILENAME", logName);
 
 	pt::ptree aggregates;
-	aggregates.put("averageRecords", averageRecords);
-	aggregates.put("totalElapsed", sum);
-	aggregates.put("perQuery", average);
-	aggregates.put("perResultItem", perResultItem);
+	aggregates.put("timeTotal", timeTotal);
+	aggregates.put("timePerQuery", timePerQuery);
+	aggregates.put("realTotal", realTotal);
+	aggregates.put("realPerQuery", realPerQuery);
+	aggregates.put("paddingPerQuery", paddingPerQuery);
+	aggregates.put("paddingPerQuery", paddingPerQuery);
+	aggregates.put("totalPerQuery", totalPerQuery);
 	root.add_child("aggregates", aggregates);
 
 	root.add_child("queries", overheadsNode);
