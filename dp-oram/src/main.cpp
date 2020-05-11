@@ -56,7 +56,7 @@ auto ORAM_STORAGE			 = FileSystem;
 auto USE_ORAMS				 = true;
 auto VIRTUAL_REQUESTS		 = false;
 const auto BATCH_SIZE		 = 1000;
-const auto SYNTHETIC_QUERIES = 100;
+const auto SYNTHETIC_QUERIES = 20;
 
 auto READ_INPUTS	  = true;
 auto GENERATE_INDICES = true;
@@ -438,6 +438,8 @@ int main(int argc, char* argv[])
 		LOG_PARAMETER(DP_BUCKETS);
 		LOG_PARAMETER(DP_LEVELS);
 		LOG_PARAMETER(DP_MU);
+
+		LOG(INFO, L"Generating DP noise tree...");
 
 		vector<map<pair<number, number>, number>> noises;
 		noises.resize(ORAMS_NUMBER);
