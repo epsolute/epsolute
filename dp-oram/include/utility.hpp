@@ -16,5 +16,5 @@ namespace DPORAM
 
 	double sampleLaplace(double mu, double lambda);
 
-	number extraGammaNodes(number m, double beta, number kZero);
+	number gammaNodes(number m, double beta, number kZero);
 }

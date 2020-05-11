@@ -539,24 +539,22 @@ int main(int argc, char* argv[])
 			auto totalNoise = 0uLL;
 			if (DP_USE_GAMMA)
 			{
-				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+				auto kZeroTilda = oramsAndBlocks.size();
+				for (auto node : noiseNodes)
 				{
-					for (auto node : noiseNodes)
-					{
-						// real + padded + noise
-						totalRecordsNumber += blockIds[i].size() + noises[0][node];
-					}
+					kZeroTilda += noises[0][node];
 				}
-				auto extra = extraGammaNodes(ORAMS_NUMBER, 1.0 / (1 << DP_BETA), totalRecordsNumber);
+				auto maxRecords = gammaNodes(ORAMS_NUMBER, 1.0 / (1 << DP_BETA), kZeroTilda);
 
 				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 				{
+					auto extra = blockIds[i].size() < maxRecords ? maxRecords - blockIds[i].size() : 0;
 					for (auto j = 0uLL; j < extra; j++)
 					{
 						blockIds[i].push_back(PathORAM::getRandomUInt(oramBlockNumbers[i]));
 					}
+					totalNoise += extra;
 				}
-				totalNoise = extra * ORAMS_NUMBER;
 			}
 			else
 			{

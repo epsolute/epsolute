@@ -11,7 +11,7 @@ namespace DPORAM
 {
 	using namespace std;
 
-	number extraGammaNodes(number m, double beta, number kZero)
+	number gammaNodes(number m, double beta, number kZero)
 	{
 		auto gamma = sqrt(-3 * (long)m * log(beta) / kZero);
 		return (number)ceil((1 + gamma) * kZero / (long)m);
