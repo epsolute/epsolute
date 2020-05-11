@@ -16,6 +16,7 @@
 #include <iostream>
 #include <numeric>
 #include <string>
+#include <sys/stat.h>
 #include <thread>
 
 using namespace std;
@@ -33,8 +34,11 @@ double numberToSalary(number salary);
 string filename(string filename, int i);
 string redishost(string host, int i);
 template <class INPUT, class OUTPUT>
-vector<OUTPUT> transform(vector<INPUT> input, function<OUTPUT(const INPUT&)> application);
+vector<OUTPUT> transform(vector<INPUT>& input, function<OUTPUT(const INPUT&)> application);
 wstring toWString(string input);
+
+inline void storeInputs(vector<pair<number, number>>& queries, vector<number> oramBlockNumbers);
+inline pair<vector<pair<number, number>>, vector<number>> loadInputs();
 
 void LOG(LOG_LEVEL level, wstring message);
 void LOG(LOG_LEVEL level, boost::wformat message);
@@ -54,6 +58,9 @@ auto VIRTUAL_REQUESTS		 = false;
 const auto BATCH_SIZE		 = 1000;
 const auto SYNTHETIC_QUERIES = 100;
 
+auto READ_INPUTS	  = true;
+auto GENERATE_INDICES = true;
+
 const auto DP_K = 16;
 auto DP_BETA	= 10uLL;
 auto DP_EPSILON = 10;
@@ -70,6 +77,8 @@ const auto TREE_FILE		 = "tree";
 const auto ORAM_STORAGE_FILE = "oram-storage";
 const auto ORAM_MAP_FILE	 = "oram-map";
 const auto ORAM_STASH_FILE	 = "oram-stash";
+const auto STATS_INPUT_FILE	 = "stats-input";
+const auto QUERY_INPUT_FILE	 = "query-input";
 
 string REDIS_HOST	  = "tcp://127.0.0.1:6379";
 string AEROSPIKE_HOST = "127.0.0.1";
@@ -115,8 +124,8 @@ int main(int argc, char* argv[])
 
 	po::options_description desc("range query processor");
 	desc.add_options()("help,h", "produce help message");
-	desc.add_options()("generateIndices,g", po::value<bool>()->default_value(true), "if set, will generate ORAM and tree indices, otherwise will read files");
-	desc.add_options()("readInputs,r", po::value<bool>()->default_value(true), "if set, will read inputs from files");
+	desc.add_options()("generateIndices,g", po::value<bool>(&GENERATE_INDICES)->default_value(GENERATE_INDICES), "if set, will generate ORAM and tree indices, otherwise will read files");
+	desc.add_options()("readInputs,r", po::value<bool>(&READ_INPUTS)->default_value(READ_INPUTS), "if set, will read inputs from files");
 	desc.add_options()("parallel,p", po::value<bool>(&PARALLEL)->default_value(PARALLEL), "if set, will query orams in parallel");
 	desc.add_options()("oramStorage,s", po::value<ORAM_BACKEND>(&ORAM_STORAGE)->default_value(ORAM_STORAGE), "the ORAM backend to use");
 	desc.add_options()("oramsNumber,n", po::value<number>(&ORAMS_NUMBER)->notifier(oramsNumberCheck)->default_value(ORAMS_NUMBER), "the number of parallel ORAMs to use");
@@ -161,6 +170,22 @@ int main(int argc, char* argv[])
 		PARALLEL = false;
 	}
 
+	struct stat buffer;
+	// if stat file does not exist and GENERATE_INDICES == false
+	if (stat(filename(STATS_INPUT_FILE, -1).c_str(), &buffer) != 0 && !GENERATE_INDICES)
+	{
+		LOG(WARNING, L"No stats file found and indices generation is disabled. Enabling it forcefully.");
+		GENERATE_INDICES = true;
+	}
+
+	LOG(INFO, GENERATE_INDICES ? L"Generating indices..." : L"Reading from input files...");
+
+	if (GENERATE_INDICES)
+	{
+		boost::filesystem::remove_all(FILES_DIR);
+		boost::filesystem::create_directories(FILES_DIR);
+	}
+
 	srand(SEED);
 
 #pragma endregion
@@ -170,91 +195,101 @@ int main(int argc, char* argv[])
 	LOG(INFO, L"Constructing data set...");
 
 	vector<vector<pair<number, bytes>>> oramsIndex;
+	vector<number> oramBlockNumbers;
 	oramsIndex.resize(ORAMS_NUMBER);
+	oramBlockNumbers.resize(ORAMS_NUMBER);
 
 	// vector<pair<salary, bytes(ORAMid, blockId)>>
 	vector<pair<number, bytes>> treeIndex;
-
 	vector<pair<number, number>> queries;
-	if (vm["readInputs"].as<bool>())
-	{
-		ifstream dataFile(DATA_FILE);
 
-		string line = "";
-		while (getline(dataFile, line))
+	if (GENERATE_INDICES)
+	{
+		if (READ_INPUTS)
 		{
-			vector<string> record;
-			boost::algorithm::split(record, line, boost::is_any_of(","));
-			auto salary = salaryToNumber(record[7]);
-			MAX_VALUE	= max(salary, MAX_VALUE);
-			MIN_VALUE	= min(salary, MIN_VALUE);
-			if (MAX_VALUE >= ULLONG_MAX / 2)
+			ifstream dataFile(DATA_FILE);
+
+			string line = "";
+			while (getline(dataFile, line))
 			{
-				throw Exception(boost::format("Looks like one of the data points (%1%) is smaller than minus OFFSET (-%2%)") % record[7] % OFFSET);
+				vector<string> record;
+				boost::algorithm::split(record, line, boost::is_any_of(","));
+				auto salary = salaryToNumber(record[7]);
+				MAX_VALUE	= max(salary, MAX_VALUE);
+				MIN_VALUE	= min(salary, MIN_VALUE);
+				if (MAX_VALUE >= ULLONG_MAX / 2)
+				{
+					throw Exception(boost::format("Looks like one of the data points (%1%) is smaller than minus OFFSET (-%2%)") % record[7] % OFFSET);
+				}
+
+				LOG(ALL, boost::wformat(L"Salary: %9.2f, data length: %3i") % numberToSalary(salary) % line.size());
+
+				auto oramId	 = PathORAM::hashToNumber(BPlusTree::bytesFromNumber(salary), ORAMS_NUMBER);
+				auto blockId = oramsIndex[oramId].size();
+
+				oramsIndex[oramId].push_back({blockId, PathORAM::fromText(line, ORAM_BLOCK_SIZE)});
+				treeIndex.push_back({salary, BPlusTree::concatNumbers(2, oramId, blockId)});
+			}
+			dataFile.close();
+
+			ifstream queryFile(QUERY_FILE);
+
+			line = "";
+			while (getline(queryFile, line))
+			{
+				vector<string> query;
+				boost::algorithm::split(query, line, boost::is_any_of(","));
+				auto left  = salaryToNumber(query[0]);
+				auto right = salaryToNumber(query[1]);
+
+				LOG(ALL, boost::wformat(L"Query: {%9.2f, %9.2f}") % numberToSalary(left) % numberToSalary(right));
+
+				queries.push_back({left, right});
+			}
+			queryFile.close();
+		}
+		else
+		{
+			for (number i = 0; i < COUNT; i++)
+			{
+				ostringstream text;
+				for (auto j = 0; j < 10; j++)
+				{
+					text << to_string(i) + (j < 9 ? "," : "");
+				}
+				auto salary = salaryToNumber(to_string(i));
+
+				MAX_VALUE = max(salary, MAX_VALUE);
+				MIN_VALUE = min(salary, MIN_VALUE);
+
+				auto oramId	 = PathORAM::hashToNumber(BPlusTree::bytesFromNumber(salary), ORAMS_NUMBER);
+				auto blockId = oramsIndex[oramId].size();
+
+				oramsIndex[oramId].push_back({blockId, PathORAM::fromText(text.str(), ORAM_BLOCK_SIZE)});
+				treeIndex.push_back({salary, BPlusTree::concatNumbers(2, oramId, blockId)});
 			}
 
-			LOG(ALL, boost::wformat(L"Salary: %9.2f, data length: %3i") % numberToSalary(salary) % line.size());
-
-			auto oramId	 = PathORAM::hashToNumber(BPlusTree::bytesFromNumber(salary), ORAMS_NUMBER);
-			auto blockId = oramsIndex[oramId].size();
-
-			oramsIndex[oramId].push_back({blockId, PathORAM::fromText(line, ORAM_BLOCK_SIZE)});
-			treeIndex.push_back({salary, BPlusTree::concatNumbers(2, oramId, blockId)});
+			for (number i = 0; i < SYNTHETIC_QUERIES; i++)
+			{
+				queries.push_back({salaryToNumber(to_string(8 * i + 3)), salaryToNumber(to_string(8 * i + 8))});
+			}
 		}
-		dataFile.close();
 
-		ifstream queryFile(QUERY_FILE);
-
-		line = "";
-		while (getline(queryFile, line))
-		{
-			vector<string> query;
-			boost::algorithm::split(query, line, boost::is_any_of(","));
-			auto left  = salaryToNumber(query[0]);
-			auto right = salaryToNumber(query[1]);
-
-			LOG(ALL, boost::wformat(L"Query: {%9.2f, %9.2f}") % numberToSalary(left) % numberToSalary(right));
-
-			queries.push_back({left, right});
-		}
-		queryFile.close();
+		oramBlockNumbers = transform<vector<pair<number, bytes>>, number>(oramsIndex, [](vector<pair<number, bytes>> oramBlocks) { return oramBlocks.size(); });
+		storeInputs(queries, oramBlockNumbers);
 	}
 	else
 	{
-		for (number i = 0; i < COUNT; i++)
-		{
-			ostringstream text;
-			for (auto j = 0; j < 10; j++)
-			{
-				text << to_string(i) + (j < 9 ? "," : "");
-			}
-			auto salary = salaryToNumber(to_string(i));
-
-			MAX_VALUE = max(salary, MAX_VALUE);
-			MIN_VALUE = min(salary, MIN_VALUE);
-
-			auto oramId	 = PathORAM::hashToNumber(BPlusTree::bytesFromNumber(salary), ORAMS_NUMBER);
-			auto blockId = oramsIndex[oramId].size();
-
-			oramsIndex[oramId].push_back({blockId, PathORAM::fromText(text.str(), ORAM_BLOCK_SIZE)});
-			treeIndex.push_back({salary, BPlusTree::concatNumbers(2, oramId, blockId)});
-		}
-
-		for (number i = 0; i < SYNTHETIC_QUERIES; i++)
-		{
-			queries.push_back({salaryToNumber(to_string(8 * i + 3)), salaryToNumber(to_string(8 * i + 8))});
-		}
+		tie(queries, oramBlockNumbers) = loadInputs();
 	}
 
-	COUNT = 0;
-	for (auto&& index : oramsIndex)
-	{
-		COUNT += index.size();
-	}
+	COUNT = accumulate(oramBlockNumbers.begin(), oramBlockNumbers.end(), 0uLL);
 
 	ORAM_LOG_CAPACITY = ceil(log2(COUNT / ORAMS_NUMBER)) + 1;
 
 	LOG_PARAMETER(COUNT);
+	LOG_PARAMETER(GENERATE_INDICES);
+	LOG_PARAMETER(READ_INPUTS);
 	LOG_PARAMETER(ORAM_BLOCK_SIZE);
 	LOG_PARAMETER(ORAM_LOG_CAPACITY);
 	LOG_PARAMETER(ORAMS_NUMBER);
@@ -278,23 +313,13 @@ int main(int argc, char* argv[])
 
 #pragma region CONSTRUCT_INDICES
 
-	LOG(INFO,
-		vm["generateIndices"].as<bool>() ?
-			L"Generating indices..." :
-			L"Reading from files...");
-
-	if (vm["generateIndices"].as<bool>())
-	{
-		boost::filesystem::remove_all(FILES_DIR);
-		boost::filesystem::create_directories(FILES_DIR);
-	}
-
 	// vector<tuple<elapsed, real, padding, noise, total>>
 	using measurement = tuple<number, number, number, number, number>;
 	vector<measurement> measurements;
 
 	if (USE_ORAMS)
 	{
+		// indices can be empty if generate == false
 		auto loadOram = [](int i, vector<pair<number, bytes>> indices, bool generate, string redisHost, string aerospikeHost, promise<ORAMSet>* promise) -> void {
 			bytes oramKey;
 			if (generate)
@@ -365,8 +390,8 @@ int main(int argc, char* argv[])
 				threads[i] = thread(
 					loadOram,
 					i,
-					oramsIndex[i],
-					vm["generateIndices"].as<bool>(),
+					oramsIndex[i], // may be empty if generate == false
+					GENERATE_INDICES,
 					REDIS_HOST,
 					AEROSPIKE_HOST,
 					&promises[i]);
@@ -384,8 +409,8 @@ int main(int argc, char* argv[])
 			oramSets.resize(ORAMS_NUMBER);
 		}
 
-		auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), vm["generateIndices"].as<bool>());
-		auto tree		 = vm["generateIndices"].as<bool>() ? make_shared<BPlusTree::Tree>(treeStorage, treeIndex) : make_shared<BPlusTree::Tree>(treeStorage);
+		auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), GENERATE_INDICES);
+		auto tree		 = GENERATE_INDICES ? make_shared<BPlusTree::Tree>(treeStorage, treeIndex) : make_shared<BPlusTree::Tree>(treeStorage);
 
 		auto orams = transform<ORAMSet, shared_ptr<PathORAM::ORAM>>(oramSets, [](ORAMSet val) { return get<3>(val); });
 
@@ -486,7 +511,7 @@ int main(int argc, char* argv[])
 				{
 					for (auto j = 0uLL; j < noises[i][node]; j++)
 					{
-						blockIds[i].push_back(PathORAM::getRandomUInt(oramsIndex[i].size()));
+						blockIds[i].push_back(PathORAM::getRandomUInt(oramBlockNumbers[i]));
 					}
 					totalNoise += noises[i][node];
 				}
@@ -575,7 +600,7 @@ int main(int argc, char* argv[])
 	{
 #pragma region STRAWMAN
 		bytes storageKey;
-		if (vm["generateIndices"].as<bool>())
+		if (GENERATE_INDICES)
 		{
 			storageKey = PathORAM::getRandomBlock(KEYSIZE);
 			PathORAM::storeKey(storageKey, filename(KEY_FILE, -1));
@@ -592,31 +617,34 @@ int main(int argc, char* argv[])
 				storage = make_shared<PathORAM::InMemoryStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, 1);
 				break;
 			case FileSystem:
-				storage = make_shared<PathORAM::FileSystemStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, filename(ORAM_STORAGE_FILE, -1), vm["generateIndices"].as<bool>(), 1);
+				storage = make_shared<PathORAM::FileSystemStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, filename(ORAM_STORAGE_FILE, -1), GENERATE_INDICES, 1);
 				break;
 			case Redis:
-				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(REDIS_HOST, -1), vm["generateIndices"].as<bool>(), 1);
+				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(REDIS_HOST, -1), GENERATE_INDICES, 1);
 				break;
 			case Aerospike:
-				storage = make_shared<PathORAM::AerospikeStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, AEROSPIKE_HOST, vm["generateIndices"].as<bool>(), 1);
+				storage = make_shared<PathORAM::AerospikeStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, AEROSPIKE_HOST, GENERATE_INDICES, 1);
 				break;
 		}
 
-		vector<pair<number, vector<pair<number, bytes>>>> batch;
-		auto count = 0;
-		for (number i = 0; i < ORAMS_NUMBER; i++)
+		if (GENERATE_INDICES)
 		{
-			for (number j = 0; j < oramsIndex[i].size(); j++)
+			vector<pair<number, vector<pair<number, bytes>>>> batch;
+			auto count = 0;
+			for (number i = 0; i < ORAMS_NUMBER; i++)
 			{
-				batch.push_back({count, {oramsIndex[i][j]}});
-				count++;
-				if (i % BATCH_SIZE == 0 || i == oramsIndex[i].size() - 1)
+				for (number j = 0; j < oramsIndex[i].size(); j++)
 				{
-					if (batch.size() > 0)
+					batch.push_back({count, {oramsIndex[i][j]}});
+					count++;
+					if (i % BATCH_SIZE == 0 || i == oramsIndex[i].size() - 1)
 					{
-						storage->set(batch);
+						if (batch.size() > 0)
+						{
+							storage->set(batch);
+						}
+						batch.clear();
 					}
-					batch.clear();
 				}
 			}
 		}
@@ -710,9 +738,9 @@ int main(int argc, char* argv[])
 
 	auto [timeTotal, timePerQuery] = avg([](measurement v) { return get<0>(v); });
 	auto [realTotal, realPerQuery] = avg([](measurement v) { return get<1>(v); });
-	auto paddingPerQuery = avg([](measurement v) { return get<2>(v); }).second;
-	auto noisePerQuery = avg([](measurement v) { return get<3>(v); }).second;
-	auto totalPerQuery = avg([](measurement v) { return get<4>(v); }).second;
+	auto paddingPerQuery		   = avg([](measurement v) { return get<2>(v); }).second;
+	auto noisePerQuery			   = avg([](measurement v) { return get<3>(v); }).second;
+	auto totalPerQuery			   = avg([](measurement v) { return get<4>(v); }).second;
 
 #pragma region WRITE_JSON
 
@@ -735,6 +763,8 @@ int main(int argc, char* argv[])
 	}
 
 	PUT_PARAMETER(COUNT);
+	PUT_PARAMETER(GENERATE_INDICES);
+	PUT_PARAMETER(READ_INPUTS);
 	PUT_PARAMETER(ORAM_BLOCK_SIZE);
 	PUT_PARAMETER(ORAM_LOG_CAPACITY);
 	PUT_PARAMETER(ORAMS_NUMBER);
@@ -788,7 +818,7 @@ int main(int argc, char* argv[])
 #pragma region HELPERS
 
 template <class INPUT, class OUTPUT>
-vector<OUTPUT> transform(vector<INPUT> input, function<OUTPUT(const INPUT&)> application)
+vector<OUTPUT> transform(vector<INPUT>& input, function<OUTPUT(const INPUT&)> application)
 {
 	vector<OUTPUT> output;
 	output.resize(input.size());
@@ -847,6 +877,63 @@ wstring toWString(string input)
 {
 	wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
 	return converter.from_bytes(input);
+}
+
+inline void storeInputs(vector<pair<number, number>>& queries, vector<number> oramBlockNumbers)
+{
+	ofstream statFile(filename(STATS_INPUT_FILE, -1));
+
+	statFile << COUNT << endl;
+	statFile << MIN_VALUE << endl;
+	statFile << MAX_VALUE << endl;
+	for (auto&& blockNumber : oramBlockNumbers)
+	{
+		statFile << blockNumber << endl;
+	}
+
+	statFile.close();
+
+	ofstream queryFile(filename(QUERY_INPUT_FILE, -1));
+
+	for (auto&& query : queries)
+	{
+		queryFile << query.first << "," << query.second << endl;
+	}
+
+	queryFile.close();
+}
+
+inline pair<vector<pair<number, number>>, vector<number>> loadInputs()
+{
+	vector<number> oramBlockNumbers;
+	ifstream statFile(filename(STATS_INPUT_FILE, -1));
+
+	statFile >> COUNT >> MIN_VALUE >> MAX_VALUE;
+	number blockNumber;
+	for (number i = 0; i < ORAMS_NUMBER; i++)
+	{
+		statFile >> blockNumber;
+		oramBlockNumbers.push_back(blockNumber);
+	}
+
+	statFile.close();
+
+	vector<pair<number, number>> queries;
+	ifstream queryFile(filename(QUERY_INPUT_FILE, -1));
+
+	string line = "";
+	while (getline(queryFile, line))
+	{
+		vector<string> query;
+		boost::algorithm::split(query, line, boost::is_any_of(","));
+		auto left  = stoull(query[0]);
+		auto right = stoull(query[1]);
+
+		queries.push_back({left, right});
+	}
+	queryFile.close();
+
+	return {queries, oramBlockNumbers};
 }
 
 void LOG(LOG_LEVEL level, boost::wformat message)
