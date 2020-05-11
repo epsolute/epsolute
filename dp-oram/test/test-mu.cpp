@@ -7,7 +7,7 @@ using namespace std;
 
 namespace DPORAM
 {
-	class UtilityMuTest : public testing::TestWithParam<tuple<double, number, number, number>>
+	class UtilityMuTest : public testing::TestWithParam<tuple<double, number, number, number, number>>
 	{
 	};
 
@@ -17,9 +17,11 @@ namespace DPORAM
 		auto k		 = get<1>(GetParam());
 		auto N		 = get<2>(GetParam());
 		auto epsilon = get<3>(GetParam());
+		auto orams	 = get<4>(GetParam());
 
 		auto nodesExp = ceil(log(k - 1) / log(k) + log(N) / log(k) - 1);
 		auto nodes	  = (pow(k, nodesExp) - 1) / (k - 1) + N;
+		nodes *= orams;
 
 		auto predicate = [beta, k, N, epsilon, nodes](double mu) -> bool {
 			return pow(1 - 0.5 * exp(-(mu * epsilon) / (log(N) / log(k))), nodes) <= 1 - beta;
@@ -31,16 +33,20 @@ namespace DPORAM
 			expected += 1.0;
 		}
 
-		auto actual = optimalMu(beta, k, N, epsilon);
+		auto actual = optimalMu(beta, k, N, epsilon, orams);
 
 		EXPECT_EQ((number)expected, actual);
 	}
 
-	vector<tuple<double, number, number, number>> cases = {
-		{0.001, 16, 1000000, 10},
-		{0.0001, 16, 10000000, 100},
-		{1.0 / (1 << 20), 16, 65536, 1},
-		{1.0 / (1 << 20), 16, 1048576, 1}};
+	vector<tuple<double, number, number, number, number>> cases = {
+		{0.001, 16, 1000000, 10, 1},
+		{0.0001, 16, 10000000, 100, 1},
+		{1.0 / (1 << 20), 16, 65536, 1, 1},
+		{1.0 / (1 << 20), 16, 1048576, 1, 1},
+		{0.001, 16, 1000000, 10, 64},
+		{0.0001, 16, 10000000, 100, 64},
+		{1.0 / (1 << 20), 16, 65536, 1, 64},
+		{1.0 / (1 << 20), 16, 1048576, 1, 64}};
 
 	INSTANTIATE_TEST_SUITE_P(UtilityMuSuite, UtilityMuTest, testing::ValuesIn(cases));
 }
