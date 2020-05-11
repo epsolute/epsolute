@@ -62,10 +62,11 @@ const auto SYNTHETIC_QUERIES = 20;
 auto READ_INPUTS	  = true;
 auto GENERATE_INDICES = true;
 
-const auto DP_K = 16;
-auto DP_BETA	= 10uLL;
-auto DP_EPSILON = 10;
-auto DP_BUCKETS = 0uLL;
+const auto DP_K	  = 16;
+auto DP_BETA	  = 10uLL;
+auto DP_EPSILON	  = 10;
+auto DP_BUCKETS	  = 0uLL;
+auto DP_USE_GAMMA = false;
 
 auto SEED = 1305;
 
@@ -137,6 +138,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("virtualRequests", po::value<bool>(&VIRTUAL_REQUESTS)->default_value(VIRTUAL_REQUESTS), "if set will only simulate ORAM queries, not actually make them");
 	desc.add_options()("beta", po::value<number>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP; x such that beta = 2^{-x}");
 	desc.add_options()("epsilon", po::value<int>(&DP_EPSILON)->notifier(epsilonCheck)->default_value(DP_EPSILON), "epsilon parameter for DP");
+	desc.add_options()("useGamma", po::value<bool>(&DP_USE_GAMMA)->default_value(DP_USE_GAMMA), "if set, will use Gamma method to add noise per ORAM");
 	desc.add_options()("count", po::value<number>(&COUNT)->default_value(COUNT), "number of synthetic records to generate");
 	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 	desc.add_options()("fileLogging", po::value<bool>(&FILE_LOGGING)->default_value(FILE_LOGGING), "if set, log stream will be duplicated to file (noticeably slows down simulation)");
@@ -307,6 +309,7 @@ int main(int argc, char* argv[])
 	LOG_PARAMETER(DP_K);
 	LOG_PARAMETER(DP_BETA);
 	LOG_PARAMETER(DP_EPSILON);
+	LOG_PARAMETER(DP_USE_GAMMA);
 
 	LOG(INFO, boost::wformat(L"ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
 	LOG(INFO, boost::wformat(L"REDIS_HOST = %1%") % toWString(REDIS_HOST));
@@ -461,6 +464,12 @@ int main(int argc, char* argv[])
 				buckets /= DP_K;
 			}
 			noises[i][{DP_LEVELS, 0}] = 0.0; // root noise is zero, because downloading all data hides everything by definition
+
+			if (DP_USE_GAMMA)
+			{
+				// no need for extra noises trees if Gamma is used
+				break;
+			}
 		}
 
 #pragma endregion
@@ -472,8 +481,13 @@ int main(int argc, char* argv[])
 		// setup Ctrl+C (SIGINT) handler
 		struct sigaction sigIntHandler;
 		sigIntHandler.sa_handler = [](int s) {
+			if (SIGINT_RECEIVED)
+			{
+				LOG(WARNING, L"Second SIGINT caught. Terminating.");
+				exit(1);
+			}
 			SIGINT_RECEIVED = true;
-			LOG(WARNING, L"SIGINT caught. Will stop processing queries.");
+			LOG(WARNING, L"SIGINT caught. Will stop processing queries. Ctrl+C again to force-terminate.");
 		};
 		sigemptyset(&sigIntHandler.sa_mask);
 		sigIntHandler.sa_flags = 0;
@@ -499,6 +513,9 @@ int main(int argc, char* argv[])
 		{
 			auto start = chrono::steady_clock::now();
 
+			number realRecordsNumber  = 0;
+			number totalRecordsNumber = 0;
+
 			// DP padding
 			auto [fromBucket, toBucket, from, to] = padToBuckets(query, MIN_VALUE, MAX_VALUE, DP_BUCKETS);
 
@@ -519,24 +536,51 @@ int main(int argc, char* argv[])
 				blockIds[oramId].push_back(blockId);
 			}
 
-			// add noisy fake block IDs
 			auto totalNoise = 0uLL;
-			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+			if (DP_USE_GAMMA)
 			{
-				for (auto node : noiseNodes)
+				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 				{
-					for (auto j = 0uLL; j < noises[i][node]; j++)
+					for (auto node : noiseNodes)
+					{
+						// real + padded + noise
+						totalRecordsNumber += blockIds[i].size() + noises[0][node];
+					}
+				}
+				auto extra = extraGammaNodes(ORAMS_NUMBER, 1.0 / (1 << DP_BETA), totalRecordsNumber);
+
+				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+				{
+					for (auto j = 0uLL; j < extra; j++)
 					{
 						blockIds[i].push_back(PathORAM::getRandomUInt(oramBlockNumbers[i]));
 					}
-					totalNoise += noises[i][node];
+				}
+				totalNoise = extra * ORAMS_NUMBER;
+			}
+			else
+			{
+				// add noisy fake block IDs
+				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+				{
+					for (auto node : noiseNodes)
+					{
+						for (auto j = 0uLL; j < noises[i][node]; j++)
+						{
+							blockIds[i].push_back(PathORAM::getRandomUInt(oramBlockNumbers[i]));
+						}
+						totalNoise += noises[i][node];
+					}
 				}
 			}
 
-			LOG(TRACE, boost::wformat(L"Query {%9.2f, %9.2f} was transformed to {%9.2f, %9.2f}, buckets [%4i, %4i], added total of %4i noisy records") % numberToSalary(query.first) % numberToSalary(query.second) % numberToSalary(from) % numberToSalary(to) % fromBucket % toBucket % totalNoise);
+			totalRecordsNumber = 0;
+			for (auto&& blocks : blockIds)
+			{
+				totalRecordsNumber += blocks.size();
+			}
 
-			number realRecordsNumber  = 0;
-			number totalRecordsNumber = 0;
+			LOG(TRACE, boost::wformat(L"Query {%9.2f, %9.2f} was transformed to {%9.2f, %9.2f}, buckets [%4i, %4i], added total of %4i noisy records") % numberToSalary(query.first) % numberToSalary(query.second) % numberToSalary(from) % numberToSalary(to) % fromBucket % toBucket % totalNoise);
 
 			if (!VIRTUAL_REQUESTS)
 			{
@@ -581,15 +625,10 @@ int main(int argc, char* argv[])
 						realRecordsNumber++;
 					}
 				}
-				totalRecordsNumber = returned.size();
 			}
 			else
 			{
 				realRecordsNumber = tree->search(query.first, query.second).size();
-				for (auto&& blocks : blockIds)
-				{
-					totalRecordsNumber += blocks.size();
-				}
 			}
 
 			auto paddingRecordsNumber = totalRecordsNumber >= (totalNoise + realRecordsNumber) ? totalRecordsNumber - totalNoise - realRecordsNumber : 0;
@@ -806,6 +845,7 @@ int main(int argc, char* argv[])
 	PUT_PARAMETER(DP_K);
 	PUT_PARAMETER(DP_BETA);
 	PUT_PARAMETER(DP_EPSILON);
+	PUT_PARAMETER(DP_USE_GAMMA);
 
 	root.put("ORAM_BACKEND", converter.to_bytes(oramBackendStrings[ORAM_STORAGE]));
 	root.put("REDIS", REDIS_HOST);

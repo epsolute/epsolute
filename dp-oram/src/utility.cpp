@@ -11,6 +11,12 @@ namespace DPORAM
 {
 	using namespace std;
 
+	number extraGammaNodes(number m, double beta, number kZero)
+	{
+		auto gamma = sqrt(-3 * (long)m * log(beta) / kZero);
+		return (number)ceil((1 + gamma) * kZero / (long)m);
+	}
+
 	tuple<number, number, number, number> padToBuckets(pair<number, number> query, number min, number max, number buckets)
 	{
 		auto step = (double)(max - min) / buckets;

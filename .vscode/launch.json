@@ -34,6 +34,8 @@
 				"${input:count}",
 				"--virtualRequests",
 				"${input:virtualRequests}",
+				"--useGamma",
+				"${input:useGamma}",
 			],
 			"cwd": "${workspaceFolder}/dp-oram/",
 			"preLaunchTask": "build"
@@ -142,6 +144,16 @@
 			"id": "virtualRequests",
 			"type": "pickString",
 			"description": "Pick value for --virtualRequests",
+			"options": [
+				"true",
+				"false"
+			],
+			"default": "false"
+		},
+		{
+			"id": "useGamma",
+			"type": "pickString",
+			"description": "Pick value for --useGamma",
 			"options": [
 				"true",
 				"false"

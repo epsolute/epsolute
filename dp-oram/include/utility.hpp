@@ -15,4 +15,6 @@ namespace DPORAM
 	vector<pair<number, number>> BRC(number fanout, number from, number to);
 
 	double sampleLaplace(double mu, double lambda);
+
+	number extraGammaNodes(number m, double beta, number kZero);
 }
