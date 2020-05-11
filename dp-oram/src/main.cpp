@@ -15,6 +15,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <signal.h>
 #include <string>
 #include <sys/stat.h>
 #include <thread>
@@ -89,6 +90,8 @@ const auto QUERY_FILE = "../../experiments-scripts/scripts/query.csv";
 auto FILE_LOGGING = false;
 string logName;
 ofstream logFile;
+
+auto SIGINT_RECEIVED = false;
 
 #define LOG_PARAMETER(parameter) LOG(INFO, boost::wformat(L"%1% = %2%") % #parameter % parameter)
 #define PUT_PARAMETER(parameter) root.put(#parameter, parameter);
@@ -317,6 +320,8 @@ int main(int argc, char* argv[])
 	using measurement = tuple<number, number, number, number, number>;
 	vector<measurement> measurements;
 
+	auto queryIndex = 1;
+
 	if (USE_ORAMS)
 	{
 		// indices can be empty if generate == false
@@ -464,6 +469,16 @@ int main(int argc, char* argv[])
 
 		LOG(INFO, boost::wformat(L"Running %1% queries...") % queries.size());
 
+		// setup Ctrl+C (SIGINT) handler
+		struct sigaction sigIntHandler;
+		sigIntHandler.sa_handler = [](int s) {
+			SIGINT_RECEIVED = true;
+			LOG(WARNING, L"SIGINT caught. Will stop processing queries.");
+		};
+		sigemptyset(&sigIntHandler.sa_mask);
+		sigIntHandler.sa_flags = 0;
+		sigaction(SIGINT, &sigIntHandler, NULL);
+
 		auto queryOram = [](vector<number> ids, shared_ptr<PathORAM::ORAM> oram, promise<vector<bytes>>* promise) -> vector<bytes> {
 			vector<bytes> answer;
 			if (ids.size() > 0)
@@ -480,7 +495,6 @@ int main(int argc, char* argv[])
 			return answer;
 		};
 
-		auto queryIndex = 1;
 		for (auto query : queries)
 		{
 			auto start = chrono::steady_clock::now();
@@ -584,11 +598,19 @@ int main(int argc, char* argv[])
 			measurements.push_back({elapsed, realRecordsNumber, paddingRecordsNumber, totalNoise, totalRecordsNumber});
 
 			LOG(DEBUG, boost::wformat(L"Query %3i / %3i : {%9.2f, %9.2f} the real records %6i ( +%6i padding, +%6i noise, %6i total) (%7s, or %7s / record)") % queryIndex % queries.size() % numberToSalary(query.first) % numberToSalary(query.second) % realRecordsNumber % paddingRecordsNumber % totalNoise % totalRecordsNumber % timeToString(elapsed) % (realRecordsNumber > 0 ? timeToString(elapsed / realRecordsNumber) : L"0 ns"));
+
+			if (SIGINT_RECEIVED)
+			{
+				LOG(WARNING, L"Stopping query processing due to SIGINT");
+				break;
+			}
+
 			queryIndex++;
 		}
 
 		if (!VIRTUAL_REQUESTS)
 		{
+			LOG(INFO, L"Saving ORAMs position map and stash to files");
 			for (auto i = 0uLL; i < oramSets.size(); i++)
 			{
 				static_pointer_cast<PathORAM::InMemoryPositionMapAdapter>(get<1>(oramSets[i]))->storeToFile(filename(ORAM_MAP_FILE, i));
@@ -726,6 +748,8 @@ int main(int argc, char* argv[])
 			measurements.push_back({elapsed, count, 0, 0, COUNT});
 
 			LOG(DEBUG, boost::wformat(L"For query {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s per record)") % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : L"0 ns"));
+
+			queryIndex++;
 		}
 #pragma endregion
 	}
@@ -746,7 +770,7 @@ int main(int argc, char* argv[])
 
 #pragma region WRITE_JSON
 
-	LOG(INFO, boost::wformat(L"Total: %1%, average: %2% per query, %3% per result item; (%4%+%5%+%6%=%7%) records per query") % timeToString(timeTotal) % timeToString(timePerQuery) % timeToString(timeTotal / realTotal) % realPerQuery % paddingPerQuery % noisePerQuery % totalPerQuery);
+	LOG(INFO, boost::wformat(L"For %1% queries: total: %2%, average: %3% per query, %4% per result item; (%5%+%6%+%7%=%8%) records per query") % queryIndex % timeToString(timeTotal) % timeToString(timePerQuery) % timeToString(timeTotal / realTotal) % realPerQuery % paddingPerQuery % noisePerQuery % totalPerQuery);
 
 	wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
 
