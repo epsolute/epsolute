@@ -41,6 +41,8 @@ wstring toWString(string input);
 inline void storeInputs(vector<pair<number, number>>& queries, vector<number> oramBlockNumbers);
 inline pair<vector<pair<number, number>>, vector<number>> loadInputs();
 
+void addFakeRequests(vector<number>& blocks, number maxBlocks, number fakesNumber);
+
 void LOG(LOG_LEVEL level, wstring message);
 void LOG(LOG_LEVEL level, boost::wformat message);
 
@@ -549,10 +551,7 @@ int main(int argc, char* argv[])
 				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 				{
 					auto extra = blockIds[i].size() < maxRecords ? maxRecords - blockIds[i].size() : 0;
-					for (auto j = 0uLL; j < extra; j++)
-					{
-						blockIds[i].push_back(PathORAM::getRandomUInt(oramBlockNumbers[i]));
-					}
+					addFakeRequests(blockIds[i], oramBlockNumbers[i], extra);
 					totalNoise += extra;
 				}
 			}
@@ -563,10 +562,7 @@ int main(int argc, char* argv[])
 				{
 					for (auto node : noiseNodes)
 					{
-						for (auto j = 0uLL; j < noises[i][node]; j++)
-						{
-							blockIds[i].push_back(PathORAM::getRandomUInt(oramBlockNumbers[i]));
-						}
+						addFakeRequests(blockIds[i], oramBlockNumbers[i], noises[i][node]);
 						totalNoise += noises[i][node];
 					}
 				}
@@ -998,6 +994,20 @@ inline pair<vector<pair<number, number>>, vector<number>> loadInputs()
 	queryFile.close();
 
 	return {queries, oramBlockNumbers};
+}
+
+void addFakeRequests(vector<number>& blocks, number maxBlocks, number fakesNumber)
+{
+	sort(blocks.begin(), blocks.end());
+	auto block = 0;
+	for (auto j = 0uLL; j < fakesNumber; j++)
+	{
+		if (block < blocks.size() && blocks[block] == j)
+		{
+			block++;
+		}
+		blocks.push_back(j % maxBlocks);
+	}
 }
 
 void LOG(LOG_LEVEL level, boost::wformat message)
