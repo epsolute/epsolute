@@ -438,7 +438,7 @@ int main(int argc, char* argv[])
 		}
 
 		auto DP_LEVELS = (int)(log(DP_BUCKETS) / log(DP_K));
-		auto DP_MU	   = optimalMu(1.0 / (1 << DP_BETA), DP_K, DP_BUCKETS, DP_EPSILON, ORAMS_NUMBER);
+		auto DP_MU	   = optimalMu(1.0 / (1 << DP_BETA), DP_K, DP_BUCKETS, DP_EPSILON, DP_USE_GAMMA ? 1 : ORAMS_NUMBER);
 
 		LOG_PARAMETER(DP_DOMAIN);
 		LOG_PARAMETER(numberToSalary(MIN_VALUE));
