@@ -69,6 +69,7 @@ auto DP_BETA	  = 10uLL;
 auto DP_EPSILON	  = 10;
 auto DP_BUCKETS	  = 0uLL;
 auto DP_USE_GAMMA = false;
+auto DP_LEVELS	  = 0uLL;
 
 auto SEED = 1305;
 
@@ -141,6 +142,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("beta", po::value<number>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP; x such that beta = 2^{-x}");
 	desc.add_options()("epsilon", po::value<int>(&DP_EPSILON)->notifier(epsilonCheck)->default_value(DP_EPSILON), "epsilon parameter for DP");
 	desc.add_options()("useGamma", po::value<bool>(&DP_USE_GAMMA)->default_value(DP_USE_GAMMA), "if set, will use Gamma method to add noise per ORAM");
+	desc.add_options()("levels", po::value<number>(&DP_LEVELS)->default_value(DP_LEVELS), "number of levels to keep in DP tree (0 for generating all levels)");
 	desc.add_options()("count", po::value<number>(&COUNT)->default_value(COUNT), "number of synthetic records to generate");
 	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 	desc.add_options()("fileLogging", po::value<bool>(&FILE_LOGGING)->default_value(FILE_LOGGING), "if set, log stream will be duplicated to file (noticeably slows down simulation)");
@@ -439,8 +441,13 @@ int main(int argc, char* argv[])
 			}
 		}
 
-		auto DP_LEVELS = (int)(log(DP_BUCKETS) / log(DP_K));
-		auto DP_MU	   = optimalMu(1.0 / (1 << DP_BETA), DP_K, DP_BUCKETS, DP_EPSILON, DP_USE_GAMMA ? 1 : ORAMS_NUMBER);
+		auto maxLevels = (number)(log(DP_BUCKETS) / log(DP_K));
+		if (DP_LEVELS == 0 || DP_LEVELS > maxLevels)
+		{
+			DP_LEVELS = maxLevels;
+		}
+
+		auto DP_MU = optimalMu(1.0 / (1 << DP_BETA), DP_K, DP_BUCKETS, DP_EPSILON, DP_USE_GAMMA ? 1 : ORAMS_NUMBER);
 
 		LOG_PARAMETER(DP_DOMAIN);
 		LOG_PARAMETER(numberToSalary(MIN_VALUE));
@@ -465,7 +472,6 @@ int main(int argc, char* argv[])
 				}
 				buckets /= DP_K;
 			}
-			noises[i][{DP_LEVELS, 0}] = 0.0; // root noise is zero, because downloading all data hides everything by definition
 
 			if (DP_USE_GAMMA)
 			{
@@ -525,6 +531,14 @@ int main(int argc, char* argv[])
 
 			// DP add noise
 			auto noiseNodes = BRC(DP_K, fromBucket, toBucket);
+			for (auto node : noiseNodes)
+			{
+				if (node.first >= DP_LEVELS)
+				{
+					LOG(CRITICAL, boost::wformat(L"DP tree is not high enough. Level %1% is not generated.") % node.first);
+					exit(1);
+				}
+			}
 
 			// add real block IDs
 			vector<vector<number>> blockIds;
@@ -1020,12 +1034,12 @@ void LOG(LOG_LEVEL level, wstring message)
 	if (level >= __logLevel)
 	{
 		auto t = time(nullptr);
-		wcout << L"[" << put_time(localtime(&t), L"%d/%m/%Y %H:%M:%S") << L"] " << setw(8) << logLevelColors[level] << logLevelStrings[level] << L": " << message << RESET << endl;
+		wcout << L"[" << put_time(localtime(&t), L"%d/%m/%Y %H:%M:%S") << L"] " << setw(10) << logLevelColors[level] << logLevelStrings[level] << L": " << message << RESET << endl;
 
 		if (FILE_LOGGING)
 		{
 			wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-			logFile << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(8) << converter.to_bytes(logLevelStrings[level]) << ": " << converter.to_bytes(message) << endl;
+			logFile << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(10) << converter.to_bytes(logLevelStrings[level]) << ": " << converter.to_bytes(message) << endl;
 		}
 	}
 }
