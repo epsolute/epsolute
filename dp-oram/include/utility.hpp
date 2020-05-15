@@ -12,7 +12,7 @@ namespace DPORAM
 
 	number optimalMu(double beta, number k, number N, number epsilon, number orams);
 
-	vector<pair<number, number>> BRC(number fanout, number from, number to);
+	vector<pair<number, number>> BRC(number fanout, number from, number to, number maxLevel = ULONG_MAX);
 
 	double sampleLaplace(double mu, double lambda);
 

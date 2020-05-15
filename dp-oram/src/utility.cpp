@@ -52,22 +52,24 @@ namespace DPORAM
 		return variateGenerator();
 	}
 
-	vector<pair<number, number>> BRC(number fanout, number from, number to)
+	vector<pair<number, number>> BRC(number fanout, number from, number to, number maxLevel)
 	{
 		vector<pair<number, number>> result;
 		int level = 0; // leaf-level, bottom
 
 		do
 		{
-			// move FROM to the right within the closest parent, but no more than TO
-			while (from % fanout != 0 && from < to)
+			// move FROM to the right within the closest parent, but no more than TO;
+			// exit if FROM hits a boundary AND level is not maximal;
+			while ((from % fanout != 0 || level == maxLevel) && from < to)
 			{
 				result.push_back({level, from});
 				from++;
 			}
 
-			// move TO to the left within the closest parent, but no more than FROM
-			while (to % fanout != fanout - 1 && from < to)
+			// move TO to the left within the closest parent, but no more than FROM;
+			// exit if TO hits a boundary AND level is not maximal
+			while ((to % fanout != fanout - 1 || level == maxLevel) && from < to)
 			{
 				result.push_back({level, to});
 				to--;
