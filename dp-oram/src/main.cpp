@@ -451,7 +451,7 @@ int main(int argc, char* argv[])
 		if (DP_LEVELS == 0)
 		{
 			auto maxBuckets = (MAX_RANGE * DP_BUCKETS + DP_DOMAIN - 1) / DP_DOMAIN;
-			DP_LEVELS		= (number)ceil(log(maxBuckets) / log(DP_K));
+			DP_LEVELS		= max((number)ceil(log(maxBuckets) / log(DP_K)), 1uLL);
 			LOG(INFO, boost::wformat(L"DP_LEVELS is optimally set at %1%, given that biggest query will span at most %2% buckets") % DP_LEVELS % maxBuckets);
 		}
 		else
