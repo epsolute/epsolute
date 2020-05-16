@@ -30,13 +30,21 @@ namespace DPORAM
 		return {fromBucket, toBucket, fromBucket * step + min, (toBucket + 1) * step + min};
 	}
 
-	number optimalMu(double beta, number k, number N, number epsilon, number orams)
+	number optimalMu(double beta, number k, number N, number epsilon, number levels, number orams)
 	{
-		auto nodesExp = ceil(log(k - 1) / log(k) + log(N) / log(k) - 1);
-		auto nodes	  = (pow(k, nodesExp) - 1) / (k - 1) + N;
+		auto nodes	 = 0uLL;
+		auto atLevel = (number)(log(N) / log(k));
+		for (auto level = 0uLL; level <= levels; level++)
+		{
+			nodes += atLevel;
+			atLevel /= k;
+		}
 		nodes *= orams;
 
-		auto mu = (number)ceil(-log(N) / (log(k) * epsilon) * log(2 - 2 * pow(1 - beta, 1 / nodes)));
+		auto logKn = log(N) / log(k);
+		// auto logKn = (double)levels; // TODO https://mattermost.dbogatov.org/dporam/pl/zqhjcpmqaifgf815w6p48e6c6c
+
+		auto mu = (number)ceil(-logKn * log(2 - 2 * pow(1 - beta, 1.0 / nodes)) / epsilon);
 
 		return mu;
 	}

@@ -64,17 +64,18 @@ const auto SYNTHETIC_QUERIES = 20;
 auto READ_INPUTS	  = true;
 auto GENERATE_INDICES = true;
 
-const auto DP_K	  = 16;
+auto DP_K		  = 16uLL;
 auto DP_BETA	  = 10uLL;
-auto DP_EPSILON	  = 10;
+auto DP_EPSILON	  = 10uLL;
 auto DP_BUCKETS	  = 0uLL;
 auto DP_USE_GAMMA = false;
-auto DP_LEVELS	  = 0uLL;
+auto DP_LEVELS	  = 100uLL;
 
 auto SEED = 1305;
 
 number MIN_VALUE = ULONG_MAX;
 number MAX_VALUE = 0;
+number MAX_RANGE = 0;
 
 const auto FILES_DIR		 = "./storage-files";
 const auto KEY_FILE			 = "key";
@@ -119,7 +120,7 @@ int main(int argc, char* argv[])
 #pragma region COMMAND_LINE_ARGUMENTS
 
 	auto oramsNumberCheck	= [](number v) { if (v < 1) { throw Exception("malformed --oramsNumber"); } };
-	auto epsilonCheck		= [](int v) { if (v < 1 ) { throw Exception("malformed --epsilon, mist be >= 1"); } };
+	auto epsilonCheck		= [](number v) { if (v == 0 ) { throw Exception("malformed --epsilon, mist be >= 1"); } };
 	auto betaCheck			= [](number v) { if (v < 1) { throw Exception("malformed --beta, must be >= 1"); } };
 	auto bucketsNumberCheck = [](int v) {
 		auto logV = log(v) / log(DP_K);
@@ -140,17 +141,16 @@ int main(int argc, char* argv[])
 	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(USE_ORAMS), "if set will use ORAMs, otherwise each query will download everythin every query");
 	desc.add_options()("virtualRequests", po::value<bool>(&VIRTUAL_REQUESTS)->default_value(VIRTUAL_REQUESTS), "if set will only simulate ORAM queries, not actually make them");
 	desc.add_options()("beta", po::value<number>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP; x such that beta = 2^{-x}");
-	desc.add_options()("epsilon", po::value<int>(&DP_EPSILON)->notifier(epsilonCheck)->default_value(DP_EPSILON), "epsilon parameter for DP");
+	desc.add_options()("epsilon", po::value<number>(&DP_EPSILON)->notifier(epsilonCheck)->default_value(DP_EPSILON), "epsilon parameter for DP");
 	desc.add_options()("useGamma", po::value<bool>(&DP_USE_GAMMA)->default_value(DP_USE_GAMMA), "if set, will use Gamma method to add noise per ORAM");
-	desc.add_options()("levels", po::value<number>(&DP_LEVELS)->default_value(DP_LEVELS), "number of levels to keep in DP tree (0 for generating all levels)");
+	desc.add_options()("levels", po::value<number>(&DP_LEVELS)->default_value(DP_LEVELS), "number of levels to keep in DP tree (0 for choosing optimal for given queries)");
 	desc.add_options()("count", po::value<number>(&COUNT)->default_value(COUNT), "number of synthetic records to generate");
+	desc.add_options()("fanout,k", po::value<number>(&DP_K)->default_value(DP_K), "DP tree fanout");
 	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 	desc.add_options()("fileLogging", po::value<bool>(&FILE_LOGGING)->default_value(FILE_LOGGING), "if set, log stream will be duplicated to file (noticeably slows down simulation)");
 	desc.add_options()("redis", po::value<string>(&REDIS_HOST)->default_value(REDIS_HOST), "Redis host to use");
 	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randmoness)");
 	desc.add_options()("aerospike", po::value<string>(&AEROSPIKE_HOST)->default_value(AEROSPIKE_HOST), "Aerospike host to use");
-
-	// TODO: optionally set DP_LEVELS to optimal value given DP_K and the longest range query
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -256,6 +256,8 @@ int main(int argc, char* argv[])
 				LOG(ALL, boost::wformat(L"Query: {%9.2f, %9.2f}") % numberToSalary(left) % numberToSalary(right));
 
 				queries.push_back({left, right});
+
+				MAX_RANGE = max(MAX_RANGE, (right - left) / 100);
 			}
 			queryFile.close();
 		}
@@ -282,7 +284,10 @@ int main(int argc, char* argv[])
 
 			for (number i = 0; i < SYNTHETIC_QUERIES; i++)
 			{
-				queries.push_back({salaryToNumber(to_string(8 * i + 3)), salaryToNumber(to_string(8 * i + 8))});
+				auto left  = salaryToNumber(to_string(8 * i + 3));
+				auto right = salaryToNumber(to_string(8 * i + 8));
+				queries.push_back({left, right});
+				MAX_RANGE = max(MAX_RANGE, (right - left) / 100);
 			}
 		}
 
@@ -443,17 +448,27 @@ int main(int argc, char* argv[])
 			}
 		}
 
-		auto maxLevels = (number)(log(DP_BUCKETS) / log(DP_K));
-		if (DP_LEVELS == 0 || DP_LEVELS > maxLevels)
+		if (DP_LEVELS == 0)
 		{
-			DP_LEVELS = maxLevels;
+			auto maxBuckets = (MAX_RANGE * DP_BUCKETS + DP_DOMAIN - 1) / DP_DOMAIN;
+			DP_LEVELS		= (number)ceil(log(maxBuckets) / log(DP_K));
+			LOG(INFO, boost::wformat(L"DP_LEVELS is optimally set at %1%, given that biggest query will span at most %2% buckets") % DP_LEVELS % maxBuckets);
+		}
+		else
+		{
+			auto maxLevels = (number)(log(DP_BUCKETS) / log(DP_K));
+			if (DP_LEVELS > maxLevels)
+			{
+				DP_LEVELS = maxLevels;
+			}
 		}
 
-		auto DP_MU = optimalMu(1.0 / (1 << DP_BETA), DP_K, DP_BUCKETS, DP_EPSILON, DP_USE_GAMMA ? 1 : ORAMS_NUMBER);
+		auto DP_MU = optimalMu(1.0 / (1 << DP_BETA), DP_K, DP_BUCKETS, DP_EPSILON, DP_LEVELS, DP_USE_GAMMA ? 1 : ORAMS_NUMBER);
 
 		LOG_PARAMETER(DP_DOMAIN);
 		LOG_PARAMETER(numberToSalary(MIN_VALUE));
 		LOG_PARAMETER(numberToSalary(MAX_VALUE));
+		LOG_PARAMETER(MAX_RANGE);
 		LOG_PARAMETER(DP_BUCKETS);
 		LOG_PARAMETER(DP_LEVELS);
 		LOG_PARAMETER(DP_MU);
@@ -962,6 +977,7 @@ inline void storeInputs(vector<pair<number, number>>& queries, vector<number> or
 	statFile << COUNT << endl;
 	statFile << MIN_VALUE << endl;
 	statFile << MAX_VALUE << endl;
+	statFile << MAX_RANGE << endl;
 	for (auto&& blockNumber : oramBlockNumbers)
 	{
 		statFile << blockNumber << endl;
@@ -984,7 +1000,7 @@ inline pair<vector<pair<number, number>>, vector<number>> loadInputs()
 	vector<number> oramBlockNumbers;
 	ifstream statFile(filename(STATS_INPUT_FILE, -1));
 
-	statFile >> COUNT >> MIN_VALUE >> MAX_VALUE;
+	statFile >> COUNT >> MIN_VALUE >> MAX_VALUE >> MAX_RANGE;
 	number blockNumber;
 	for (number i = 0; i < ORAMS_NUMBER; i++)
 	{
