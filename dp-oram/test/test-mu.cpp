@@ -31,8 +31,8 @@ namespace DPORAM
 		}
 		nodes *= orams;
 
-		auto predicate = [beta, k, N, epsilon, nodes](double mu) -> bool {
-			return pow(1 - 0.5 * exp(-(mu * epsilon) / (log(N) / log(k))), nodes) <= 1 - beta;
+		auto predicate = [beta, epsilon, levels, nodes](double mu) -> bool {
+			return pow(1 - 0.5 * exp(-(mu * epsilon) / (double)levels), nodes) <= 1 - beta;
 		};
 
 		auto expected = 0.0;

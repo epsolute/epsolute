@@ -41,10 +41,7 @@ namespace DPORAM
 		}
 		nodes *= orams;
 
-		auto logKn = log(N) / log(k);
-		// auto logKn = (double)levels; // TODO https://mattermost.dbogatov.org/dporam/pl/zqhjcpmqaifgf815w6p48e6c6c
-
-		auto mu = (number)ceil(-logKn * log(2 - 2 * pow(1 - beta, 1.0 / nodes)) / epsilon);
+		auto mu = (number)ceil(-(double)levels * log(2 - 2 * pow(1 - beta, 1.0 / nodes)) / epsilon);
 
 		return mu;
 	}
