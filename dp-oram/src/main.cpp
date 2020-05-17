@@ -331,8 +331,6 @@ int main(int argc, char* argv[])
 
 #pragma region CONSTRUCT_INDICES
 
-	LOG(INFO, L"Loading ORAMs and B+ tree");
-
 	// vector<tuple<elapsed, real, padding, noise, total>>
 	using measurement = tuple<number, number, number, number, number>;
 	vector<measurement> measurements;
@@ -341,6 +339,8 @@ int main(int argc, char* argv[])
 
 	if (USE_ORAMS)
 	{
+		LOG(INFO, L"Loading ORAMs and B+ tree");
+
 		// indices can be empty if generate == false
 		auto loadOram = [](int i, vector<pair<number, bytes>> indices, bool generate, string redisHost, string aerospikeHost, promise<ORAMSet>* promise) -> void {
 			bytes oramKey;
