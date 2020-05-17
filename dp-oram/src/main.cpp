@@ -53,7 +53,7 @@ auto ORAM_BLOCK_SIZE		 = 256uLL;
 auto ORAM_LOG_CAPACITY		 = 10uLL;
 auto ORAMS_NUMBER			 = 1uLL;
 auto PARALLEL				 = true;
-const auto ORAM_Z			 = 3uLL;
+auto ORAM_Z					 = 3uLL;
 const auto TREE_BLOCK_SIZE	 = 64uLL;
 auto ORAM_STORAGE			 = FileSystem;
 auto USE_ORAMS				 = true;
@@ -137,6 +137,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("parallel,p", po::value<bool>(&PARALLEL)->default_value(PARALLEL), "if set, will query orams in parallel");
 	desc.add_options()("oramStorage,s", po::value<ORAM_BACKEND>(&ORAM_STORAGE)->default_value(ORAM_STORAGE), "the ORAM backend to use");
 	desc.add_options()("oramsNumber,n", po::value<number>(&ORAMS_NUMBER)->notifier(oramsNumberCheck)->default_value(ORAMS_NUMBER), "the number of parallel ORAMs to use");
+	desc.add_options()("oramsZ,z", po::value<number>(&ORAM_Z)->default_value(ORAM_Z), "the Z parameter for ORAMs");
 	desc.add_options()("bucketsNumber,b", po::value<number>(&DP_BUCKETS)->notifier(bucketsNumberCheck)->default_value(DP_BUCKETS), "the number of buckets for DP (if 0, will choose max buckets such that less than the domain size)");
 	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(USE_ORAMS), "if set will use ORAMs, otherwise each query will download everythin every query");
 	desc.add_options()("virtualRequests", po::value<bool>(&VIRTUAL_REQUESTS)->default_value(VIRTUAL_REQUESTS), "if set will only simulate ORAM queries, not actually make them");
@@ -329,6 +330,8 @@ int main(int argc, char* argv[])
 #pragma endregion
 
 #pragma region CONSTRUCT_INDICES
+
+	LOG(INFO, L"Loading ORAMs and B+ tree");
 
 	// vector<tuple<elapsed, real, padding, noise, total>>
 	using measurement = tuple<number, number, number, number, number>;
