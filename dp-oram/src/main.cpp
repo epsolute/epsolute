@@ -720,6 +720,8 @@ int main(int argc, char* argv[])
 
 		if (GENERATE_INDICES)
 		{
+			LOG(INFO, L"Uploading strawman dataset");
+
 			vector<pair<number, vector<pair<number, bytes>>>> batch;
 			auto count = 0;
 			for (number i = 0; i < ORAMS_NUMBER; i++)
@@ -728,7 +730,7 @@ int main(int argc, char* argv[])
 				{
 					batch.push_back({count, {oramsIndex[i][j]}});
 					count++;
-					if (i % BATCH_SIZE == 0 || i == oramsIndex[i].size() - 1)
+					if (j % BATCH_SIZE == 0 || j == oramsIndex[i].size() - 1)
 					{
 						if (batch.size() > 0)
 						{
@@ -777,6 +779,8 @@ int main(int argc, char* argv[])
 
 			return answer;
 		};
+
+		LOG(INFO, L"Running strawman queries");
 
 		for (auto query : queries)
 		{
