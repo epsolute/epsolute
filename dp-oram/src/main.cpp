@@ -403,7 +403,7 @@ int main(int argc, char* argv[])
 
 		if (!VIRTUAL_REQUESTS)
 		{
-			for (auto i = 0; i < ORAMS_NUMBER; i++)
+			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 			{
 				futures[i] = promises[i].get_future();
 				threads[i] = thread(
@@ -416,7 +416,7 @@ int main(int argc, char* argv[])
 					&promises[i]);
 			}
 
-			for (auto i = 0; i < ORAMS_NUMBER; i++)
+			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 			{
 				auto result = futures[i].get();
 				threads[i].join();
@@ -478,10 +478,10 @@ int main(int argc, char* argv[])
 		vector<map<pair<number, number>, number>> noises;
 		noises.resize(ORAMS_NUMBER);
 
-		for (auto i = 0; i < ORAMS_NUMBER; i++)
+		for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 		{
 			auto buckets = DP_BUCKETS;
-			for (auto l = 0; l < DP_LEVELS; l++)
+			for (auto l = 0uLL; l < DP_LEVELS; l++)
 			{
 				for (auto j = 0uLL; j < buckets; j++)
 				{
@@ -616,13 +616,13 @@ int main(int argc, char* argv[])
 					promise<vector<bytes>> promises[ORAMS_NUMBER];
 					future<vector<bytes>> futures[ORAMS_NUMBER];
 
-					for (auto i = 0; i < ORAMS_NUMBER; i++)
+					for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 					{
 						futures[i] = promises[i].get_future();
 						threads[i] = thread(queryOram, blockIds[i], orams[i], &promises[i]);
 					}
 
-					for (auto i = 0; i < ORAMS_NUMBER; i++)
+					for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 					{
 						auto result = futures[i].get();
 						threads[i].join();
@@ -631,7 +631,7 @@ int main(int argc, char* argv[])
 				}
 				else
 				{
-					for (auto i = 0; i < ORAMS_NUMBER; i++)
+					for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 					{
 						auto result = queryOram(blockIds[i], orams[i], NULL);
 						returned.insert(returned.end(), result.begin(), result.end());
@@ -786,13 +786,13 @@ int main(int argc, char* argv[])
 				promise<vector<string>> promises[ORAMS_NUMBER];
 				future<vector<string>> futures[ORAMS_NUMBER];
 
-				for (auto i = 0; i < ORAMS_NUMBER; i++)
+				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 				{
 					futures[i] = promises[i].get_future();
 					threads[i] = thread(storageQuery, i * COUNT / ORAMS_NUMBER, (i + 1) * COUNT / ORAMS_NUMBER, query.first, query.second, &promises[i]);
 				}
 
-				for (auto i = 0; i < ORAMS_NUMBER; i++)
+				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 				{
 					auto result = futures[i].get();
 					threads[i].join();
@@ -801,7 +801,7 @@ int main(int argc, char* argv[])
 			}
 			else
 			{
-				for (auto i = 0; i < ORAMS_NUMBER; i++)
+				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 				{
 					auto result = storageQuery(i * COUNT / ORAMS_NUMBER, (i + 1) * COUNT / ORAMS_NUMBER, query.first, query.second, NULL);
 					count += result.size();
@@ -1031,7 +1031,7 @@ inline pair<vector<pair<number, number>>, vector<number>> loadInputs()
 void addFakeRequests(vector<number>& blocks, number maxBlocks, number fakesNumber)
 {
 	sort(blocks.begin(), blocks.end());
-	auto block = 0;
+	auto block = 0uLL;
 	for (auto j = 0uLL; j < fakesNumber; j++)
 	{
 		if (block < blocks.size() && blocks[block] == j)

@@ -60,7 +60,7 @@ namespace DPORAM
 	vector<pair<number, number>> BRC(number fanout, number from, number to, number maxLevel)
 	{
 		vector<pair<number, number>> result;
-		int level = 0; // leaf-level, bottom
+		number level = 0; // leaf-level, bottom
 
 		do
 		{
