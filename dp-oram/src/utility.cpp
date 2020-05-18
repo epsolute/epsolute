@@ -80,7 +80,7 @@ namespace DPORAM
 				to--;
 			}
 
-			// after we moved FROM and TO towrds each other they may or may not meet
+			// after we moved FROM and TO towards each other they may or may not meet
 			if (from != to)
 			{
 				// if they have not met, we climb one more level
