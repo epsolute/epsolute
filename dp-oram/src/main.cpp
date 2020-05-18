@@ -130,7 +130,7 @@ int main(int argc, char* argv[])
 		}
 	};
 
-	po::options_description desc("range query processor");
+	po::options_description desc("range query processor", 120);
 	desc.add_options()("help,h", "produce help message");
 	desc.add_options()("generateIndices,g", po::value<bool>(&GENERATE_INDICES)->default_value(GENERATE_INDICES), "if set, will generate ORAM and tree indices, otherwise will read files");
 	desc.add_options()("readInputs,r", po::value<bool>(&READ_INPUTS)->default_value(READ_INPUTS), "if set, will read inputs from files");
