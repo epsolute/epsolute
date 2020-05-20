@@ -841,7 +841,7 @@ int main(int argc, char* argv[])
 
 #pragma region WRITE_JSON
 
-	LOG(INFO, boost::wformat(L"For %1% queries: total: %2%, average: %3% per query, %4% per result item; (%5%+%6%+%7%=%8%) records per query") % queryIndex % timeToString(timeTotal) % timeToString(timePerQuery) % timeToString(timeTotal / realTotal) % realPerQuery % paddingPerQuery % noisePerQuery % totalPerQuery);
+	LOG(INFO, boost::wformat(L"For %1% queries: total: %2%, average: %3% per query, %4% per result item; (%5%+%6%+%7%=%8%) records per query") % (queryIndex - 1) % timeToString(timeTotal) % timeToString(timePerQuery) % timeToString(timeTotal / realTotal) % realPerQuery % paddingPerQuery % noisePerQuery % totalPerQuery);
 
 	wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
 
