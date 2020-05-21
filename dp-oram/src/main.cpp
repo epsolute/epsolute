@@ -26,10 +26,13 @@ using namespace DPORAM;
 namespace po = boost::program_options;
 namespace pt = boost::property_tree;
 
+using profile = tuple<bool, number, number, number>;
+
 // WARNING: this is supposed to be greater than the absolute value of the smallest element in the dataset
 #define OFFSET 20000000
 
 wstring timeToString(long long time);
+wstring bytesToString(long long bytes);
 number salaryToNumber(string salary);
 double numberToSalary(number salary);
 string filename(string filename, int i);
@@ -42,24 +45,26 @@ inline void storeInputs(vector<pair<number, number>>& queries, vector<number> or
 inline pair<vector<pair<number, number>>, vector<number>> loadInputs();
 
 void addFakeRequests(vector<number>& blocks, number maxBlocks, number fakesNumber);
+void printProfileStats(vector<profile>& profiles, number queries = 0);
 
 void LOG(LOG_LEVEL level, wstring message);
 void LOG(LOG_LEVEL level, boost::wformat message);
 
 #pragma region GLOBALS
 
-auto COUNT					 = 1000uLL;
-auto ORAM_BLOCK_SIZE		 = 256uLL;
-auto ORAM_LOG_CAPACITY		 = 10uLL;
-auto ORAMS_NUMBER			 = 1uLL;
-auto PARALLEL				 = true;
-auto ORAM_Z					 = 3uLL;
-const auto TREE_BLOCK_SIZE	 = 64uLL;
-auto ORAM_STORAGE			 = FileSystem;
-auto USE_ORAMS				 = true;
-auto VIRTUAL_REQUESTS		 = false;
-const auto BATCH_SIZE		 = 1000;
-const auto SYNTHETIC_QUERIES = 20;
+auto COUNT					  = 1000uLL;
+auto ORAM_BLOCK_SIZE		  = 256uLL;
+auto ORAM_LOG_CAPACITY		  = 10uLL;
+auto ORAMS_NUMBER			  = 1uLL;
+auto PARALLEL				  = true;
+auto ORAM_Z					  = 3uLL;
+const auto TREE_BLOCK_SIZE	  = 64uLL;
+auto ORAM_STORAGE			  = FileSystem;
+auto PROFILE_STORAGE_REQUESTS = false;
+auto USE_ORAMS				  = true;
+auto VIRTUAL_REQUESTS		  = false;
+const auto BATCH_SIZE		  = 1000;
+const auto SYNTHETIC_QUERIES  = 20;
 
 auto READ_INPUTS	  = true;
 auto GENERATE_INDICES = true;
@@ -97,6 +102,8 @@ string logName;
 ofstream logFile;
 
 auto SIGINT_RECEIVED = false;
+
+mutex profileMutex;
 
 #define LOG_PARAMETER(parameter) LOG(INFO, boost::wformat(L"%1% = %2%") % #parameter % parameter)
 #define PUT_PARAMETER(parameter) root.put(#parameter, parameter);
@@ -140,6 +147,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("oramsZ,z", po::value<number>(&ORAM_Z)->default_value(ORAM_Z), "the Z parameter for ORAMs");
 	desc.add_options()("bucketsNumber,b", po::value<number>(&DP_BUCKETS)->notifier(bucketsNumberCheck)->default_value(DP_BUCKETS), "the number of buckets for DP (if 0, will choose max buckets such that less than the domain size)");
 	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(USE_ORAMS), "if set will use ORAMs, otherwise each query will download everything every query");
+	desc.add_options()("profileStorage", po::value<bool>(&PROFILE_STORAGE_REQUESTS)->default_value(PROFILE_STORAGE_REQUESTS), "if set will listen to storage events and record them");
 	desc.add_options()("virtualRequests", po::value<bool>(&VIRTUAL_REQUESTS)->default_value(VIRTUAL_REQUESTS), "if set will only simulate ORAM queries, not actually make them");
 	desc.add_options()("beta", po::value<number>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP; x such that beta = 2^{-x}");
 	desc.add_options()("epsilon", po::value<number>(&DP_EPSILON)->notifier(epsilonCheck)->default_value(DP_EPSILON), "epsilon parameter for DP");
@@ -314,6 +322,7 @@ int main(int argc, char* argv[])
 	LOG_PARAMETER(ORAM_Z);
 	LOG_PARAMETER(TREE_BLOCK_SIZE);
 	LOG_PARAMETER(USE_ORAMS);
+	LOG_PARAMETER(PROFILE_STORAGE_REQUESTS);
 	LOG_PARAMETER(FILE_LOGGING);
 	LOG_PARAMETER(VIRTUAL_REQUESTS);
 	LOG_PARAMETER(BATCH_SIZE);
@@ -335,6 +344,9 @@ int main(int argc, char* argv[])
 	using measurement = tuple<number, number, number, number, number>;
 	vector<measurement> measurements;
 
+	vector<profile> profiles;
+	vector<profile> allProfiles;
+
 	auto queryIndex = 1;
 
 	if (USE_ORAMS)
@@ -342,7 +354,7 @@ int main(int argc, char* argv[])
 		LOG(INFO, L"Loading ORAMs and B+ tree");
 
 		// indices can be empty if generate == false
-		auto loadOram = [](int i, vector<pair<number, bytes>> indices, bool generate, string redisHost, string aerospikeHost, promise<ORAMSet>* promise) -> void {
+		auto loadOram = [&profiles, &allProfiles](int i, vector<pair<number, bytes>> indices, bool generate, string redisHost, string aerospikeHost, promise<ORAMSet>* promise) -> void {
 			bytes oramKey;
 			if (generate)
 			{
@@ -394,6 +406,16 @@ int main(int argc, char* argv[])
 			if (generate)
 			{
 				oram->load(indices);
+			}
+
+			if (PROFILE_STORAGE_REQUESTS)
+			{
+				oramStorage->subscribe([&profiles, &allProfiles](bool read, number batch, number size, number overhead) -> void {
+					lock_guard<mutex> guard(profileMutex);
+
+					profiles.push_back({read, batch, size, overhead});
+					allProfiles.push_back({read, batch, size, overhead});
+				});
 			}
 
 			promise->set_value({oramStorage, oramPositionMap, oramStash, oram});
@@ -541,6 +563,11 @@ int main(int argc, char* argv[])
 		{
 			auto start = chrono::steady_clock::now();
 
+			if (PROFILE_STORAGE_REQUESTS)
+			{
+				profiles.clear();
+			}
+
 			number realRecordsNumber  = 0;
 			number totalRecordsNumber = 0;
 
@@ -665,6 +692,11 @@ int main(int argc, char* argv[])
 			measurements.push_back({elapsed, realRecordsNumber, paddingRecordsNumber, totalNoise, totalRecordsNumber});
 
 			LOG(DEBUG, boost::wformat(L"Query %3i / %3i : {%9.2f, %9.2f} the real records %6i ( +%6i padding, +%6i noise, %6i total) (%7s, or %7s / record)") % queryIndex % queries.size() % numberToSalary(query.first) % numberToSalary(query.second) % realRecordsNumber % paddingRecordsNumber % totalNoise % totalRecordsNumber % timeToString(elapsed) % (realRecordsNumber > 0 ? timeToString(elapsed / realRecordsNumber) : L"0 ns"));
+
+			if (PROFILE_STORAGE_REQUESTS)
+			{
+				printProfileStats(profiles);
+			}
 
 			if (SIGINT_RECEIVED)
 			{
@@ -842,6 +874,10 @@ int main(int argc, char* argv[])
 #pragma region WRITE_JSON
 
 	LOG(INFO, boost::wformat(L"For %1% queries: total: %2%, average: %3% per query, %4% per result item; (%5%+%6%+%7%=%8%) records per query") % (queryIndex - 1) % timeToString(timeTotal) % timeToString(timePerQuery) % timeToString(timeTotal / realTotal) % realPerQuery % paddingPerQuery % noisePerQuery % totalPerQuery);
+	if (PROFILE_STORAGE_REQUESTS)
+	{
+		printProfileStats(allProfiles, queryIndex - 1);
+	}
 
 	wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
 
@@ -869,6 +905,7 @@ int main(int argc, char* argv[])
 	PUT_PARAMETER(ORAM_Z);
 	PUT_PARAMETER(TREE_BLOCK_SIZE);
 	PUT_PARAMETER(USE_ORAMS);
+	PUT_PARAMETER(PROFILE_STORAGE_REQUESTS);
 	PUT_PARAMETER(FILE_LOGGING);
 	PUT_PARAMETER(VIRTUAL_REQUESTS);
 	PUT_PARAMETER(BATCH_SIZE);
@@ -943,6 +980,30 @@ wstring timeToString(long long time)
 		else
 		{
 			time /= 1000;
+		}
+	}
+
+	return text.str();
+}
+
+wstring bytesToString(long long bytes)
+{
+	wstringstream text;
+	vector<wstring> units = {
+		L"B",
+		L"KB",
+		L"MB",
+		L"GB"};
+	for (number i = 0; i < units.size(); i++)
+	{
+		if (bytes < (1 << 13) || i == units.size() - 1)
+		{
+			text << bytes << L" " << units[i];
+			break;
+		}
+		else
+		{
+			bytes >>= 10;
 		}
 	}
 
@@ -1046,6 +1107,51 @@ void addFakeRequests(vector<number>& blocks, number maxBlocks, number fakesNumbe
 			block++;
 		}
 		blocks.push_back(j % maxBlocks);
+	}
+}
+
+void printProfileStats(vector<profile>& profiles, number queries)
+{
+	if (profiles.size() == 0)
+	{
+		return;
+	}
+
+	auto profileAvg = [&profiles, &queries](function<bool(const profile&)> ifCount, function<number(const profile&)> getter) -> pair<number, number> {
+		vector<profile> filtered;
+		copy_if(profiles.begin(), profiles.end(), back_inserter(filtered), ifCount);
+
+		auto values = transform<profile, number>(filtered, getter);
+		auto sum	= accumulate(values.begin(), values.end(), 0LL);
+		return {sum, sum / (queries == 0 ? values.size() : queries)};
+	};
+
+	for (auto&& mode : {L"in", L"out", L"all"})
+	{
+		auto ifCount = [&mode](const profile& v) -> bool {
+			if (wcscmp(mode, L"in") == 0)
+			{
+				return get<0>(v);
+			}
+			else if (wcscmp(mode, L"out") == 0)
+			{
+				return !get<0>(v);
+			}
+			return true;
+		};
+
+		auto events							= profileAvg(ifCount, [](const profile& v) { return 1uLL; }).first;
+		auto [batchSum, batchAverage]		= profileAvg(ifCount, [](const profile v) { return get<1>(v); });
+		auto [sizeSum, sizeAverage]			= profileAvg(ifCount, [](const profile v) { return get<2>(v); });
+		auto [overheadSum, overheadAverage] = profileAvg(ifCount, [](const profile v) { return get<3>(v); });
+
+		auto denominator = queries == 0 ? L"req" : L"query";
+
+		LOG(queries == 0 ? TRACE : DEBUG, boost::wformat(L"%3s: %6i req, %6i blocks (%4i / %s, %4i / ORAM), %8s (%8s / %s, %8s / ORAM), %7s (%7s / %s, %7s / ORAM)") % mode % events % batchSum % batchAverage % denominator % (batchSum / ORAMS_NUMBER) % bytesToString(sizeSum) % bytesToString(sizeAverage) % denominator % bytesToString(sizeSum / ORAMS_NUMBER) % timeToString(overheadSum) % timeToString(overheadAverage) % denominator % timeToString(overheadSum / ORAMS_NUMBER));
+	}
+	if (queries == 0)
+	{
+		LOG(TRACE, L"");
 	}
 }
 
