@@ -36,6 +36,8 @@
 				"${input:virtualRequests}",
 				"--useGamma",
 				"${input:useGamma}",
+				"--profileStorage",
+				"${input:profileStorage}",
 			],
 			"cwd": "${workspaceFolder}/dp-oram/",
 			"preLaunchTask": "build"
@@ -154,6 +156,16 @@
 			"id": "useGamma",
 			"type": "pickString",
 			"description": "Pick value for --useGamma",
+			"options": [
+				"true",
+				"false"
+			],
+			"default": "false"
+		},
+		{
+			"id": "profileStorage",
+			"type": "pickString",
+			"description": "Pick value for --profileStorage",
 			"options": [
 				"true",
 				"false"

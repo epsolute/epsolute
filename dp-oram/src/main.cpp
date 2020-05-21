@@ -1105,6 +1105,7 @@ void addFakeRequests(vector<number>& blocks, number maxBlocks, number fakesNumbe
 		if (block < blocks.size() && blocks[block] == j)
 		{
 			block++;
+			continue;
 		}
 		blocks.push_back(j % maxBlocks);
 	}
