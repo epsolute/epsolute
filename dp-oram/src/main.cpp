@@ -38,11 +38,11 @@ double numberToSalary(number salary);
 string filename(string filename, int i);
 string redishost(string host, int i);
 template <class INPUT, class OUTPUT>
-vector<OUTPUT> transform(vector<INPUT>& input, function<OUTPUT(const INPUT&)> application);
+vector<OUTPUT> transform(const vector<INPUT>& input, function<OUTPUT(const INPUT&)> application);
 wstring toWString(string input);
 
-inline void storeInputs(vector<pair<number, number>>& queries, vector<number> oramBlockNumbers);
-inline pair<vector<pair<number, number>>, vector<number>> loadInputs();
+inline void storeInputs(vector<pair<number, number>>& queries, vector<number>& oramBlockNumbers);
+inline void loadInputs(vector<pair<number, number>>& queries, vector<number>& oramBlockNumbers);
 
 void addFakeRequests(vector<number>& blocks, number maxBlocks, number fakesNumber);
 void printProfileStats(vector<profile>& profiles, number queries = 0);
@@ -244,7 +244,8 @@ int main(int argc, char* argv[])
 
 				LOG(ALL, boost::wformat(L"Salary: %9.2f, data length: %3i") % numberToSalary(salary) % line.size());
 
-				auto oramId	 = PathORAM::hashToNumber(BPlusTree::bytesFromNumber(salary), ORAMS_NUMBER);
+				auto toHash	 = BPlusTree::bytesFromNumber(salary);
+				auto oramId	 = PathORAM::hashToNumber(toHash, ORAMS_NUMBER);
 				auto blockId = oramsIndex[oramId].size();
 
 				oramsIndex[oramId].push_back({blockId, PathORAM::fromText(line, ORAM_BLOCK_SIZE)});
@@ -284,7 +285,8 @@ int main(int argc, char* argv[])
 				MAX_VALUE = max(salary, MAX_VALUE);
 				MIN_VALUE = min(salary, MIN_VALUE);
 
-				auto oramId	 = PathORAM::hashToNumber(BPlusTree::bytesFromNumber(salary), ORAMS_NUMBER);
+				auto toHash	 = BPlusTree::bytesFromNumber(salary);
+				auto oramId	 = PathORAM::hashToNumber(toHash, ORAMS_NUMBER);
 				auto blockId = oramsIndex[oramId].size();
 
 				oramsIndex[oramId].push_back({blockId, PathORAM::fromText(text.str(), ORAM_BLOCK_SIZE)});
@@ -300,12 +302,12 @@ int main(int argc, char* argv[])
 			}
 		}
 
-		oramBlockNumbers = transform<vector<pair<number, bytes>>, number>(oramsIndex, [](vector<pair<number, bytes>> oramBlocks) { return oramBlocks.size(); });
+		oramBlockNumbers = transform<vector<pair<number, bytes>>, number>(oramsIndex, [](const vector<pair<number, bytes>>& oramBlocks) { return oramBlocks.size(); });
 		storeInputs(queries, oramBlockNumbers);
 	}
 	else
 	{
-		tie(queries, oramBlockNumbers) = loadInputs();
+		loadInputs(queries, oramBlockNumbers);
 	}
 
 	COUNT = accumulate(oramBlockNumbers.begin(), oramBlockNumbers.end(), 0uLL);
@@ -453,6 +455,7 @@ int main(int argc, char* argv[])
 			oramSets.resize(ORAMS_NUMBER);
 		}
 
+		// TODO tree pass by ref
 		auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), GENERATE_INDICES);
 		auto tree		 = GENERATE_INDICES ? make_shared<BPlusTree::Tree>(treeStorage, treeIndex) : make_shared<BPlusTree::Tree>(treeStorage);
 
@@ -543,12 +546,16 @@ int main(int argc, char* argv[])
 		sigIntHandler.sa_flags = 0;
 		sigaction(SIGINT, &sigIntHandler, NULL);
 
-		auto queryOram = [](vector<number> ids, shared_ptr<PathORAM::ORAM> oram, promise<vector<bytes>>* promise) -> vector<bytes> {
+		auto queryOram = [](const vector<number>& ids, shared_ptr<PathORAM::ORAM> oram, promise<vector<bytes>>* promise) -> vector<bytes> {
 			vector<bytes> answer;
 			if (ids.size() > 0)
 			{
-				auto requests = transform<number, pair<number, bytes>>(ids, [](number id) { return make_pair(id, bytes()); });
-				answer		  = oram->multiple(requests);
+				answer.reserve(ids.size());
+				vector<pair<number, bytes>> requests;
+				requests.reserve(ids.size());
+
+				transform(ids.begin(), ids.end(), requests.begin(), [](number id) { return make_pair(id, bytes()); });
+				oram->multiple(requests, answer);
 			}
 
 			if (promise != NULL)
@@ -574,6 +581,7 @@ int main(int argc, char* argv[])
 			// DP padding
 			auto [fromBucket, toBucket, from, to] = padToBuckets(query, MIN_VALUE, MAX_VALUE, DP_BUCKETS);
 
+			// TODO by ref
 			auto oramsAndBlocks = tree->search(from, to);
 
 			// DP add noise
@@ -754,7 +762,7 @@ int main(int argc, char* argv[])
 		{
 			LOG(INFO, L"Uploading strawman dataset");
 
-			vector<pair<number, vector<pair<number, bytes>>>> batch;
+			vector<pair<const number, vector<pair<number, bytes>>>> batch;
 			auto count = 0;
 			for (number i = 0; i < ORAMS_NUMBER; i++)
 			{
@@ -785,7 +793,8 @@ int main(int argc, char* argv[])
 				{
 					if (batch.size() > 0)
 					{
-						auto returned = storage->get(batch);
+						vector<PathORAM::block> returned;
+						storage->get(batch, returned);
 						for (auto record : returned)
 						{
 							auto text = PathORAM::toText(record.second, ORAM_BLOCK_SIZE);
@@ -953,7 +962,7 @@ int main(int argc, char* argv[])
 #pragma region HELPERS
 
 template <class INPUT, class OUTPUT>
-vector<OUTPUT> transform(vector<INPUT>& input, function<OUTPUT(const INPUT&)> application)
+vector<OUTPUT> transform(const vector<INPUT>& input, function<OUTPUT(const INPUT&)> application)
 {
 	vector<OUTPUT> output;
 	output.resize(input.size());
@@ -1038,7 +1047,7 @@ wstring toWString(string input)
 	return converter.from_bytes(input);
 }
 
-inline void storeInputs(vector<pair<number, number>>& queries, vector<number> oramBlockNumbers)
+inline void storeInputs(vector<pair<number, number>>& queries, vector<number>& oramBlockNumbers)
 {
 	ofstream statFile(filename(STATS_INPUT_FILE, -1));
 
@@ -1063,9 +1072,8 @@ inline void storeInputs(vector<pair<number, number>>& queries, vector<number> or
 	queryFile.close();
 }
 
-inline pair<vector<pair<number, number>>, vector<number>> loadInputs()
+inline void loadInputs(vector<pair<number, number>>& queries, vector<number>& oramBlockNumbers)
 {
-	vector<number> oramBlockNumbers;
 	ifstream statFile(filename(STATS_INPUT_FILE, -1));
 
 	statFile >> COUNT >> MIN_VALUE >> MAX_VALUE >> MAX_RANGE;
@@ -1078,7 +1086,6 @@ inline pair<vector<pair<number, number>>, vector<number>> loadInputs()
 
 	statFile.close();
 
-	vector<pair<number, number>> queries;
 	ifstream queryFile(filename(QUERY_INPUT_FILE, -1));
 
 	string line = "";
@@ -1092,12 +1099,11 @@ inline pair<vector<pair<number, number>>, vector<number>> loadInputs()
 		queries.push_back({left, right});
 	}
 	queryFile.close();
-
-	return {queries, oramBlockNumbers};
 }
 
 void addFakeRequests(vector<number>& blocks, number maxBlocks, number fakesNumber)
 {
+	// TODO possible avoid sort
 	sort(blocks.begin(), blocks.end());
 	auto block = 0uLL;
 	for (auto j = 0uLL; j < fakesNumber; j++)
