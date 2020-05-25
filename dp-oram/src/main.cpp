@@ -307,6 +307,7 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
+		oramBlockNumbers.clear();
 		loadInputs(queries, oramBlockNumbers);
 	}
 
