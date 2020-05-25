@@ -552,7 +552,7 @@ int main(int argc, char* argv[])
 			{
 				answer.reserve(ids.size());
 				vector<pair<number, bytes>> requests;
-				requests.reserve(ids.size());
+				requests.resize(ids.size());
 
 				transform(ids.begin(), ids.end(), requests.begin(), [](number id) { return make_pair(id, bytes()); });
 				oram->multiple(requests, answer);
