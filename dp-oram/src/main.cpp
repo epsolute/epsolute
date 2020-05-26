@@ -582,8 +582,8 @@ int main(int argc, char* argv[])
 			// DP padding
 			auto [fromBucket, toBucket, from, to] = padToBuckets(query, MIN_VALUE, MAX_VALUE, DP_BUCKETS);
 
-			// TODO by ref
-			auto oramsAndBlocks = tree->search(from, to);
+			vector<bytes> oramsAndBlocks;
+			tree->search(from, to, oramsAndBlocks);
 
 			// DP add noise
 			auto noiseNodes = BRC(DP_K, fromBucket, toBucket);
@@ -599,7 +599,7 @@ int main(int argc, char* argv[])
 			// add real block IDs
 			vector<vector<number>> blockIds;
 			blockIds.resize(ORAMS_NUMBER);
-			for (auto pair : oramsAndBlocks)
+			for (auto&& pair : oramsAndBlocks)
 			{
 				auto fromTree = BPlusTree::deconstructNumbers(pair);
 				auto oramId	  = fromTree[0];
@@ -692,7 +692,9 @@ int main(int argc, char* argv[])
 			}
 			else
 			{
-				realRecordsNumber = tree->search(query.first, query.second).size();
+				vector<bytes> result;
+				tree->search(query.first, query.second, result);
+				realRecordsNumber = result.size();
 			}
 
 			auto paddingRecordsNumber = totalRecordsNumber >= (totalNoise + realRecordsNumber) ? totalRecordsNumber - totalNoise - realRecordsNumber : 0;
