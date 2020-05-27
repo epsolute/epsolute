@@ -1106,7 +1106,7 @@ inline void loadInputs(vector<pair<number, number>>& queries, vector<number>& or
 
 void addFakeRequests(vector<number>& blocks, number maxBlocks, number fakesNumber)
 {
-	// TODO possible avoid sort
+	// TODO possibly avoid sort
 	sort(blocks.begin(), blocks.end());
 	auto block = 0uLL;
 	for (auto j = 0uLL; j < fakesNumber; j++)
@@ -1114,6 +1114,7 @@ void addFakeRequests(vector<number>& blocks, number maxBlocks, number fakesNumbe
 		if (block < blocks.size() && blocks[block] == j)
 		{
 			block++;
+			j--;
 			continue;
 		}
 		blocks.push_back(j % maxBlocks);
