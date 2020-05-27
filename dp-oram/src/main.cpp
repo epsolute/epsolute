@@ -373,16 +373,16 @@ int main(int argc, char* argv[])
 			switch (ORAM_STORAGE)
 			{
 				case InMemory:
-					oramStorage = make_shared<PathORAM::InMemoryStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, ORAM_Z);
+					oramStorage = make_shared<PathORAM::InMemoryStorageAdapter>((1 << ORAM_LOG_CAPACITY) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, ORAM_Z);
 					break;
 				case FileSystem:
-					oramStorage = make_shared<PathORAM::FileSystemStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), generate, ORAM_Z);
+					oramStorage = make_shared<PathORAM::FileSystemStorageAdapter>((1 << ORAM_LOG_CAPACITY) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, filename(ORAM_STORAGE_FILE, i), generate, ORAM_Z);
 					break;
 				case Redis:
-					oramStorage = make_shared<PathORAM::RedisStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(redisHost, i), generate, ORAM_Z);
+					oramStorage = make_shared<PathORAM::RedisStorageAdapter>((1 << ORAM_LOG_CAPACITY) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(redisHost, i), generate, ORAM_Z);
 					break;
 				case Aerospike:
-					oramStorage = make_shared<PathORAM::AerospikeStorageAdapter>(((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, aerospikeHost, generate, ORAM_Z, to_string(i));
+					oramStorage = make_shared<PathORAM::AerospikeStorageAdapter>((1 << ORAM_LOG_CAPACITY) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, aerospikeHost, generate, ORAM_Z, to_string(i));
 					break;
 			}
 
