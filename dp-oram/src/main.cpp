@@ -313,7 +313,7 @@ int main(int argc, char* argv[])
 
 	COUNT = accumulate(oramBlockNumbers.begin(), oramBlockNumbers.end(), 0uLL);
 
-	ORAM_LOG_CAPACITY = ceil(log2(COUNT / ORAMS_NUMBER)) + 1;
+	ORAM_LOG_CAPACITY = ceil(log2(COUNT / ORAMS_NUMBER / ORAM_Z)) + 1;
 
 	LOG_PARAMETER(COUNT);
 	LOG_PARAMETER(GENERATE_INDICES);
