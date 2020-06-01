@@ -462,7 +462,6 @@ int main(int argc, char* argv[])
 			oramSets.resize(ORAMS_NUMBER);
 		}
 
-		// TODO tree pass by ref
 		auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), GENERATE_INDICES);
 		auto tree		 = GENERATE_INDICES ? make_shared<BPlusTree::Tree>(treeStorage, treeIndex) : make_shared<BPlusTree::Tree>(treeStorage);
 
@@ -652,6 +651,9 @@ int main(int argc, char* argv[])
 
 			LOG(TRACE, boost::wformat(L"Query {%9.2f, %9.2f} was transformed to {%9.2f, %9.2f}, buckets [%4i, %4i], added total of %4i noisy records") % numberToSalary(query.first) % numberToSalary(query.second) % numberToSalary(from) % numberToSalary(to) % fromBucket % toBucket % totalNoise);
 
+			chrono::steady_clock::time_point timestampBeforeORAMs;
+			chrono::steady_clock::time_point timestampAfterORAMs;
+
 			if (!VIRTUAL_REQUESTS)
 			{
 				vector<bytes> returned;
@@ -660,6 +662,8 @@ int main(int argc, char* argv[])
 					thread threads[ORAMS_NUMBER];
 					promise<vector<bytes>> promises[ORAMS_NUMBER];
 					future<vector<bytes>> futures[ORAMS_NUMBER];
+
+					timestampBeforeORAMs = chrono::steady_clock::now();
 
 					for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 					{
@@ -673,14 +677,20 @@ int main(int argc, char* argv[])
 						threads[i].join();
 						returned.insert(returned.end(), result.begin(), result.end());
 					}
+
+					timestampAfterORAMs = chrono::steady_clock::now();
 				}
 				else
 				{
+					timestampBeforeORAMs = chrono::steady_clock::now();
+
 					for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 					{
 						auto result = queryOram(blockIds[i], orams[i], NULL);
 						returned.insert(returned.end(), result.begin(), result.end());
 					}
+
+					timestampAfterORAMs = chrono::steady_clock::now();
 				}
 				for (auto record : returned)
 				{
@@ -695,6 +705,8 @@ int main(int argc, char* argv[])
 						realRecordsNumber++;
 					}
 				}
+
+				LOG(TRACE, boost::wformat(L"Before ORAMs: %7s, ORAMs: %7s, after ORAMs: %7s") % timeToString(chrono::duration_cast<chrono::nanoseconds>(timestampBeforeORAMs - start).count()) % timeToString(chrono::duration_cast<chrono::nanoseconds>(timestampAfterORAMs - timestampBeforeORAMs).count()) % timeToString(chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - timestampAfterORAMs).count()));
 			}
 			else
 			{
