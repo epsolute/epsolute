@@ -69,6 +69,8 @@ const auto SYNTHETIC_QUERIES  = 20;
 auto READ_INPUTS	  = true;
 auto GENERATE_INDICES = true;
 
+auto DISABLE_ENCRYPTION = false;
+
 auto DP_K		  = 16uLL;
 auto DP_BETA	  = 10uLL;
 auto DP_EPSILON	  = 10uLL;
@@ -157,6 +159,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("fanout,k", po::value<number>(&DP_K)->default_value(DP_K), "DP tree fanout");
 	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 	desc.add_options()("fileLogging", po::value<bool>(&FILE_LOGGING)->default_value(FILE_LOGGING), "if set, log stream will be duplicated to file (noticeably slows down simulation)");
+	desc.add_options()("disableEncryption", po::value<bool>(&DISABLE_ENCRYPTION)->default_value(DISABLE_ENCRYPTION), "if set, will disable encryption in ORAM");
 	desc.add_options()("redis", po::value<string>(&REDIS_HOST)->default_value(REDIS_HOST), "Redis host to use");
 	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randomness)");
 	desc.add_options()("aerospike", po::value<string>(&AEROSPIKE_HOST)->default_value(AEROSPIKE_HOST), "Aerospike host to use");
@@ -194,6 +197,12 @@ int main(int argc, char* argv[])
 	{
 		LOG(WARNING, L"Parallel execution is pointless when ORAMS_NUMBER is 1. PARALLEL will be set to false.");
 		PARALLEL = false;
+	}
+
+	if (DISABLE_ENCRYPTION)
+	{
+		LOG(WARNING, L"Encryption disabled");
+		PathORAM::__blockCipherMode = PathORAM::BlockCipherMode::NONE;
 	}
 
 	struct stat buffer;
