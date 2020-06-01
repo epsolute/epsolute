@@ -562,8 +562,9 @@ int main(int argc, char* argv[])
 		sigIntHandler.sa_flags = 0;
 		sigaction(SIGINT, &sigIntHandler, NULL);
 
-		auto queryOram = [](const vector<number>& ids, shared_ptr<PathORAM::ORAM> oram, promise<vector<bytes>>* promise) -> vector<bytes> {
+		auto queryOram = [](const vector<number>& ids, shared_ptr<PathORAM::ORAM> oram, number from, number to, promise<number>* promise) -> number {
 			vector<bytes> answer;
+			number count = 0;
 			if (ids.size() > 0)
 			{
 				answer.reserve(ids.size());
@@ -574,12 +575,26 @@ int main(int argc, char* argv[])
 				oram->multiple(requests, answer);
 			}
 
-			if (promise != NULL)
+			for (auto&& record : answer)
 			{
-				promise->set_value(answer);
+				auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
+
+				vector<string> broken;
+				boost::algorithm::split(broken, text, boost::is_any_of(","));
+				auto salary = salaryToNumber(broken[7]);
+
+				if (salary >= from && salary <= to)
+				{
+					count++;
+				}
 			}
 
-			return answer;
+			if (promise != NULL)
+			{
+				promise->set_value(count);
+			}
+
+			return count;
 		};
 
 		for (auto query : queries)
@@ -666,26 +681,24 @@ int main(int argc, char* argv[])
 
 			if (!VIRTUAL_REQUESTS)
 			{
-				vector<bytes> returned;
 				if (PARALLEL)
 				{
 					thread threads[ORAMS_NUMBER];
-					promise<vector<bytes>> promises[ORAMS_NUMBER];
-					future<vector<bytes>> futures[ORAMS_NUMBER];
+					promise<number> promises[ORAMS_NUMBER];
+					future<number> futures[ORAMS_NUMBER];
 
 					timestampBeforeORAMs = chrono::steady_clock::now();
 
 					for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 					{
 						futures[i] = promises[i].get_future();
-						threads[i] = thread(queryOram, blockIds[i], orams[i], &promises[i]);
+						threads[i] = thread(queryOram, blockIds[i], orams[i], query.first, query.second, &promises[i]);
 					}
 
 					for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 					{
-						auto result = futures[i].get();
+						realRecordsNumber += futures[i].get();
 						threads[i].join();
-						returned.insert(returned.end(), result.begin(), result.end());
 					}
 
 					timestampAfterORAMs = chrono::steady_clock::now();
@@ -696,24 +709,10 @@ int main(int argc, char* argv[])
 
 					for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 					{
-						auto result = queryOram(blockIds[i], orams[i], NULL);
-						returned.insert(returned.end(), result.begin(), result.end());
+						realRecordsNumber += queryOram(blockIds[i], orams[i], query.first, query.second, NULL);
 					}
 
 					timestampAfterORAMs = chrono::steady_clock::now();
-				}
-				for (auto record : returned)
-				{
-					auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
-
-					vector<string> broken;
-					boost::algorithm::split(broken, text, boost::is_any_of(","));
-					auto salary = salaryToNumber(broken[7]);
-
-					if (salary >= query.first && salary <= query.second)
-					{
-						realRecordsNumber++;
-					}
 				}
 
 				LOG(TRACE, boost::wformat(L"Before ORAMs: %7s, ORAMs: %7s, after ORAMs: %7s") % timeToString(chrono::duration_cast<chrono::nanoseconds>(timestampBeforeORAMs - start).count()) % timeToString(chrono::duration_cast<chrono::nanoseconds>(timestampAfterORAMs - timestampBeforeORAMs).count()) % timeToString(chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - timestampAfterORAMs).count()));
