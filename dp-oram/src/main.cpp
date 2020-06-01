@@ -190,6 +190,12 @@ int main(int argc, char* argv[])
 		PARALLEL = false;
 	}
 
+	if (ORAMS_NUMBER == 1 && PARALLEL)
+	{
+		LOG(WARNING, L"Parallel execution is pointless when ORAMS_NUMBER is 1. PARALLEL will be set to false.");
+		PARALLEL = false;
+	}
+
 	struct stat buffer;
 	// if stat file does not exist and GENERATE_INDICES == false
 	if (stat(filename(STATS_INPUT_FILE, -1).c_str(), &buffer) != 0 && !GENERATE_INDICES)
