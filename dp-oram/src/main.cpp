@@ -46,6 +46,7 @@ inline void loadInputs(vector<pair<number, number>>& queries, vector<number>& or
 
 void addFakeRequests(vector<number>& blocks, number maxBlocks, number fakesNumber);
 void printProfileStats(vector<profile>& profiles, number queries = 0);
+void dumpToMattermost(int argc, char* argv[]);
 
 void LOG(LOG_LEVEL level, wstring message);
 void LOG(LOG_LEVEL level, boost::wformat message);
@@ -98,6 +99,9 @@ string AEROSPIKE_HOST = "127.0.0.1";
 
 const auto DATA_FILE  = "../../experiments-scripts/scripts/data.csv";
 const auto QUERY_FILE = "../../experiments-scripts/scripts/query.csv";
+
+auto DUMP_TO_MATTERMOST = true;
+vector<string> logLines;
 
 auto FILE_LOGGING = false;
 string logName;
@@ -160,6 +164,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 	desc.add_options()("fileLogging", po::value<bool>(&FILE_LOGGING)->default_value(FILE_LOGGING), "if set, log stream will be duplicated to file (noticeably slows down simulation)");
 	desc.add_options()("disableEncryption", po::value<bool>(&DISABLE_ENCRYPTION)->default_value(DISABLE_ENCRYPTION), "if set, will disable encryption in ORAM");
+	desc.add_options()("dumpToMattermost", po::value<bool>(&DUMP_TO_MATTERMOST)->default_value(DUMP_TO_MATTERMOST), "if set, will dump log to mattermost");
 	desc.add_options()("redis", po::value<string>(&REDIS_HOST)->default_value(REDIS_HOST), "Redis host to use");
 	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randomness)");
 	desc.add_options()("aerospike", po::value<string>(&AEROSPIKE_HOST)->default_value(AEROSPIKE_HOST), "Aerospike host to use");
@@ -984,6 +989,7 @@ int main(int argc, char* argv[])
 	{
 		logFile.close();
 	}
+	dumpToMattermost(argc, argv);
 
 #pragma endregion
 
@@ -1194,6 +1200,51 @@ void printProfileStats(vector<profile>& profiles, number queries)
 	}
 }
 
+void dumpToMattermost(int argc, char* argv[])
+{
+	if (DUMP_TO_MATTERMOST)
+	{
+		if (const char* env_hook = std::getenv("MATTERMOST_HOOK"))
+		{
+			auto hook = string(env_hook);
+
+			stringstream ss;
+			auto count = 0;
+			auto lines = 0;
+			auto part  = 1;
+			for (auto&& line : logLines)
+			{
+				count += line.size();
+				lines++;
+				ss << line << endl;
+
+				if (count >= 16383 - 256 || lines == logLines.size() - 1)
+				{
+					stringstream cli;
+
+					for (auto i = 0; i < argc; i++)
+					{
+						cli << argv[i] << " ";
+					}
+
+					auto partString = (lines == logLines.size() - 1) && part == 1 ? "" : boost::str(boost::format("**PART %i**\n") % part);
+
+					exec(boost::str(boost::format("curl -s -i -X POST -H 'Content-Type: application/json' -d '{\"text\": \"%s\n`%s`\n```\n%s\n```\"}' %s") % partString % cli.str() % ss.str() % hook));
+
+					ss.str("");
+					ss.clear();
+					count = 0;
+					part++;
+				}
+			}
+		}
+		else
+		{
+			LOG(ERROR, L"DUMP_TO_MATTERMOST is set to true, but hook is not set in MATTERMOST_HOOK. Will not post to Mattermost.");
+		}
+	}
+}
+
 void LOG(LOG_LEVEL level, boost::wformat message)
 {
 	LOG(level, boost::str(message));
@@ -1206,7 +1257,15 @@ void LOG(LOG_LEVEL level, wstring message)
 		auto t = time(nullptr);
 		wcout << L"[" << put_time(localtime(&t), L"%d/%m/%Y %H:%M:%S") << L"] " << setw(10) << logLevelColors[level] << logLevelStrings[level] << L": " << message << RESET << endl;
 
-		if (FILE_LOGGING)
+		if (DUMP_TO_MATTERMOST)
+		{
+			stringstream ss;
+			wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+			ss << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(10) << converter.to_bytes(logLevelStrings[level]) << ": " << converter.to_bytes(message);
+			logLines.push_back(ss.str());
+		}
+
+		if (FILE_LOGGING || DUMP_TO_MATTERMOST)
 		{
 			wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
 			logFile << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(10) << converter.to_bytes(logLevelStrings[level]) << ": " << converter.to_bytes(message) << endl;

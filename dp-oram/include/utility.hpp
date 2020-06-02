@@ -17,4 +17,6 @@ namespace DPORAM
 	double sampleLaplace(double mu, double lambda);
 
 	number gammaNodes(number m, double beta, number kZero);
+
+	string exec(string cmd);
 }

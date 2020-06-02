@@ -11,6 +11,22 @@ namespace DPORAM
 {
 	using namespace std;
 
+	string exec(string cmd)
+	{
+		array<char, 128> buffer;
+		string result;
+		unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+		if (!pipe)
+		{
+			throw runtime_error("popen() failed!");
+		}
+		while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
+		{
+			result += buffer.data();
+		}
+		return result;
+	}
+
 	number gammaNodes(number m, double beta, number kZero)
 	{
 		auto gamma = sqrt(-3 * (long)m * log(beta) / kZero);
