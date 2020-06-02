@@ -1210,8 +1210,15 @@ void dumpToMattermost(int argc, char* argv[])
 		{
 			auto hook = string(env_hook);
 
+			stringstream cli;
+			for (auto i = 0; i < argc; i++)
+			{
+				cli << argv[i] << " ";
+			}
+			auto cliStr = cli.str();
+
 			stringstream ss;
-			auto count = 0;
+			auto count = cliStr.size();
 			auto lines = 0u;
 			auto part  = 1;
 			for (auto&& line : logLines)
@@ -1222,20 +1229,13 @@ void dumpToMattermost(int argc, char* argv[])
 
 				if (count >= 16383 - 256 || lines == logLines.size() - 1)
 				{
-					stringstream cli;
-
-					for (auto i = 0; i < argc; i++)
-					{
-						cli << argv[i] << " ";
-					}
-
 					auto partString = (lines == logLines.size() - 1) && part == 1 ? "" : boost::str(boost::format("**PART %i**\n") % part);
 
-					exec(boost::str(boost::format("curl -s -i -X POST -H 'Content-Type: application/json' -d '{\"text\": \"%s\n`%s`\n```\n%s\n```\"}' %s") % partString % cli.str() % ss.str() % hook));
+					exec(boost::str(boost::format("curl -s -i -X POST -H 'Content-Type: application/json' -d '{\"text\": \"%s\n`%s`\n```\n%s\n```\"}' %s") % partString % cliStr % ss.str() % hook));
 
 					ss.str("");
 					ss.clear();
-					count = 0;
+					count = cliStr.size();
 					part++;
 				}
 			}
