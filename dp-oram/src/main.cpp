@@ -348,6 +348,7 @@ int main(int argc, char* argv[])
 	LOG_PARAMETER(DISABLE_ENCRYPTION);
 	LOG_PARAMETER(PROFILE_STORAGE_REQUESTS);
 	LOG_PARAMETER(FILE_LOGGING);
+	LOG_PARAMETER(DUMP_TO_MATTERMOST);
 	LOG_PARAMETER(VIRTUAL_REQUESTS);
 	LOG_PARAMETER(BATCH_SIZE);
 	LOG_PARAMETER(SEED);
@@ -952,6 +953,7 @@ int main(int argc, char* argv[])
 	PUT_PARAMETER(DISABLE_ENCRYPTION);
 	PUT_PARAMETER(PROFILE_STORAGE_REQUESTS);
 	PUT_PARAMETER(FILE_LOGGING);
+	PUT_PARAMETER(DUMP_TO_MATTERMOST);
 	PUT_PARAMETER(VIRTUAL_REQUESTS);
 	PUT_PARAMETER(BATCH_SIZE);
 	PUT_PARAMETER(SEED);
@@ -1210,7 +1212,7 @@ void dumpToMattermost(int argc, char* argv[])
 
 			stringstream ss;
 			auto count = 0;
-			auto lines = 0;
+			auto lines = 0u;
 			auto part  = 1;
 			for (auto&& line : logLines)
 			{
