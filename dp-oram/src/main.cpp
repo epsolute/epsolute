@@ -63,6 +63,7 @@ const auto TREE_BLOCK_SIZE	  = 64uLL;
 auto ORAM_STORAGE			  = FileSystem;
 auto PROFILE_STORAGE_REQUESTS = false;
 auto USE_ORAMS				  = true;
+auto USE_ORAM_OPTIMIZATION	  = true;
 auto VIRTUAL_REQUESTS		  = false;
 const auto BATCH_SIZE		  = 1000;
 const auto SYNTHETIC_QUERIES  = 20;
@@ -153,6 +154,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("oramsZ,z", po::value<number>(&ORAM_Z)->default_value(ORAM_Z), "the Z parameter for ORAMs");
 	desc.add_options()("bucketsNumber,b", po::value<number>(&DP_BUCKETS)->notifier(bucketsNumberCheck)->default_value(DP_BUCKETS), "the number of buckets for DP (if 0, will choose max buckets such that less than the domain size)");
 	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(USE_ORAMS), "if set will use ORAMs, otherwise each query will download everything every query");
+	desc.add_options()("useOramOptimization", po::value<bool>(&USE_ORAM_OPTIMIZATION)->default_value(USE_ORAM_OPTIMIZATION), "if set will use ORAM batch processing");
 	desc.add_options()("profileStorage", po::value<bool>(&PROFILE_STORAGE_REQUESTS)->default_value(PROFILE_STORAGE_REQUESTS), "if set will listen to storage events and record them");
 	desc.add_options()("virtualRequests", po::value<bool>(&VIRTUAL_REQUESTS)->default_value(VIRTUAL_REQUESTS), "if set will only simulate ORAM queries, not actually make them");
 	desc.add_options()("beta", po::value<number>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP; x such that beta = 2^{-x}");
@@ -579,25 +581,49 @@ int main(int argc, char* argv[])
 
 			if (ids.size() > 0)
 			{
-				answer.reserve(ids.size());
-				vector<pair<number, bytes>> requests;
-				requests.resize(ids.size());
+				if (USE_ORAM_OPTIMIZATION)
+				{
+					answer.reserve(ids.size());
+					vector<pair<number, bytes>> requests;
+					requests.resize(ids.size());
 
-				transform(ids.begin(), ids.end(), requests.begin(), [](number id) { return make_pair(id, bytes()); });
-				oram->multiple(requests, answer);
+					transform(ids.begin(), ids.end(), requests.begin(), [](number id) { return make_pair(id, bytes()); });
+					oram->multiple(requests, answer);
+				}
+				else
+				{
+					for (auto&& id : ids)
+					{
+						bytes record;
+						oram->get(id, record);
+						auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
+
+						vector<string> broken;
+						boost::algorithm::split(broken, text, boost::is_any_of(","));
+						auto salary = salaryToNumber(broken[7]);
+
+						if (salary >= from && salary <= to)
+						{
+							count++;
+						}
+					}
+				}
 			}
 
-			for (auto&& record : answer)
+			if (USE_ORAM_OPTIMIZATION)
 			{
-				auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
-
-				vector<string> broken;
-				boost::algorithm::split(broken, text, boost::is_any_of(","));
-				auto salary = salaryToNumber(broken[7]);
-
-				if (salary >= from && salary <= to)
+				for (auto&& record : answer)
 				{
-					count++;
+					auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
+
+					vector<string> broken;
+					boost::algorithm::split(broken, text, boost::is_any_of(","));
+					auto salary = salaryToNumber(broken[7]);
+
+					if (salary >= from && salary <= to)
+					{
+						count++;
+					}
 				}
 			}
 
@@ -605,10 +631,10 @@ int main(int argc, char* argv[])
 
 			if (promise != NULL)
 			{
-				promise->set_value({count, elapsed, answer.size()});
+				promise->set_value({count, elapsed, ids.size()});
 			}
 
-			return {count, elapsed, answer.size()};
+			return {count, elapsed, ids.size()};
 		};
 
 		for (auto query : queries)
