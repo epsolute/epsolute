@@ -568,9 +568,15 @@ int main(int argc, char* argv[])
 		sigIntHandler.sa_flags = 0;
 		sigaction(SIGINT, &sigIntHandler, NULL);
 
-		auto queryOram = [](const vector<number>& ids, shared_ptr<PathORAM::ORAM> oram, number from, number to, promise<number>* promise) -> number {
+		// returns tuple<# real records, slowest thread, fastest thread, average, std-dev>
+		using queryReturnType = pair<number, chrono::steady_clock::rep>;
+
+		auto queryOram = [](const vector<number>& ids, shared_ptr<PathORAM::ORAM> oram, number from, number to, promise<queryReturnType>* promise) -> queryReturnType {
 			vector<bytes> answer;
 			number count = 0;
+
+			auto start = chrono::steady_clock::now();
+
 			if (ids.size() > 0)
 			{
 				answer.reserve(ids.size());
@@ -595,12 +601,14 @@ int main(int argc, char* argv[])
 				}
 			}
 
+			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
+
 			if (promise != NULL)
 			{
-				promise->set_value(count);
+				promise->set_value({count, elapsed});
 			}
 
-			return count;
+			return {count, elapsed};
 		};
 
 		for (auto query : queries)
@@ -687,11 +695,13 @@ int main(int argc, char* argv[])
 
 			if (!VIRTUAL_REQUESTS)
 			{
+				vector<chrono::steady_clock::rep> threadOverheads;
+
 				if (PARALLEL)
 				{
 					thread threads[ORAMS_NUMBER];
-					promise<number> promises[ORAMS_NUMBER];
-					future<number> futures[ORAMS_NUMBER];
+					promise<queryReturnType> promises[ORAMS_NUMBER];
+					future<queryReturnType> futures[ORAMS_NUMBER];
 
 					timestampBeforeORAMs = chrono::steady_clock::now();
 
@@ -703,7 +713,9 @@ int main(int argc, char* argv[])
 
 					for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 					{
-						realRecordsNumber += futures[i].get();
+						auto returned = futures[i].get();
+						realRecordsNumber += returned.first;
+						threadOverheads.push_back(returned.second);
 						threads[i].join();
 					}
 
@@ -715,13 +727,26 @@ int main(int argc, char* argv[])
 
 					for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 					{
-						realRecordsNumber += queryOram(blockIds[i], orams[i], query.first, query.second, NULL);
+						auto returned = queryOram(blockIds[i], orams[i], query.first, query.second, NULL);
+						realRecordsNumber += returned.first;
+						threadOverheads.push_back(returned.second);
 					}
 
 					timestampAfterORAMs = chrono::steady_clock::now();
 				}
 
-				LOG(TRACE, boost::wformat(L"Before ORAMs: %7s, ORAMs: %7s, after ORAMs: %7s") % timeToString(chrono::duration_cast<chrono::nanoseconds>(timestampBeforeORAMs - start).count()) % timeToString(chrono::duration_cast<chrono::nanoseconds>(timestampAfterORAMs - timestampBeforeORAMs).count()) % timeToString(chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - timestampAfterORAMs).count()));
+				auto queryOverheadBefore = chrono::duration_cast<chrono::nanoseconds>(timestampBeforeORAMs - start).count();
+				auto queryOverheadORAMs	 = chrono::duration_cast<chrono::nanoseconds>(timestampAfterORAMs - timestampBeforeORAMs).count();
+				auto queryOverheadAfter	 = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - timestampAfterORAMs).count();
+
+				auto threadOverheadsMin		  = *min_element(threadOverheads.begin(), threadOverheads.end());
+				auto threadOverheadsMax		  = *max_element(threadOverheads.begin(), threadOverheads.end());
+				auto threadOverheadsSum		  = accumulate(threadOverheads.begin(), threadOverheads.end(), 0uLL);
+				auto threadOverheadsMean	  = threadOverheadsSum / threadOverheads.size();
+				auto threadOverheadsSquareSum = inner_product(threadOverheads.begin(), threadOverheads.end(), threadOverheads.begin(), 0uLL);
+				auto threadOverheadsStdDev	  = sqrt(threadOverheadsSquareSum / threadOverheads.size() - threadOverheadsMean * threadOverheadsMean);
+
+				LOG(TRACE, boost::wformat(L"Query overhead {before: %7s, ORAMs: %7s, after: %7s}, threads info: {min: %7s, max: %7s, avg: %7s, stddev: %7s}") % timeToString(queryOverheadBefore) % timeToString(queryOverheadORAMs) % timeToString(queryOverheadAfter) % timeToString(threadOverheadsMin) % timeToString(threadOverheadsMax) % timeToString(threadOverheadsMean) % timeToString(threadOverheadsStdDev));
 			}
 			else
 			{
