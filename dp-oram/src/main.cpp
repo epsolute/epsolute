@@ -351,8 +351,6 @@ int main(int argc, char* argv[])
 	ORAM_LOG_CAPACITY = ceil(log2(COUNT / ORAMS_NUMBER / ORAM_Z)) + 1;
 
 	LOG_PARAMETER(COUNT);
-	LOG_PARAMETER(DATASET_TAG);
-	LOG_PARAMETER(QUERYSET_TAG);
 	LOG_PARAMETER(GENERATE_INDICES);
 	LOG_PARAMETER(READ_INPUTS);
 	LOG_PARAMETER(ORAM_BLOCK_SIZE);
@@ -374,6 +372,9 @@ int main(int argc, char* argv[])
 	LOG_PARAMETER(DP_BETA);
 	LOG_PARAMETER(DP_EPSILON);
 	LOG_PARAMETER(DP_USE_GAMMA);
+
+	LOG(INFO, boost::wformat(L"DATASET_TAG = %1%") % toWString(DATASET_TAG));
+	LOG(INFO, boost::wformat(L"QUERYSET_TAG = %1%") % toWString(QUERYSET_TAG));
 
 	LOG(INFO, boost::wformat(L"ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
 	LOG(INFO, boost::wformat(L"REDIS_HOST = %1%") % toWString(REDIS_HOST));
