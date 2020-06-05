@@ -66,7 +66,7 @@ auto USE_ORAMS				  = true;
 auto USE_ORAM_OPTIMIZATION	  = true;
 auto VIRTUAL_REQUESTS		  = false;
 const auto BATCH_SIZE		  = 1000;
-const auto SYNTHETIC_QUERIES  = 20;
+auto SYNTHETIC_QUERIES		  = 20uLL;
 
 auto READ_INPUTS	  = true;
 auto GENERATE_INDICES = true;
@@ -165,6 +165,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("useGamma", po::value<bool>(&DP_USE_GAMMA)->default_value(DP_USE_GAMMA), "if set, will use Gamma method to add noise per ORAM");
 	desc.add_options()("levels", po::value<number>(&DP_LEVELS)->default_value(DP_LEVELS), "number of levels to keep in DP tree (0 for choosing optimal for given queries)");
 	desc.add_options()("count", po::value<number>(&COUNT)->default_value(COUNT), "number of synthetic records to generate");
+	desc.add_options()("queries", po::value<number>(&SYNTHETIC_QUERIES)->default_value(SYNTHETIC_QUERIES), "number of synthetic queries to generate");
 	desc.add_options()("fanout,k", po::value<number>(&DP_K)->default_value(DP_K), "DP tree fanout");
 	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 	desc.add_options()("fileLogging", po::value<bool>(&FILE_LOGGING)->default_value(FILE_LOGGING), "if set, log stream will be duplicated to file (noticeably slows down simulation)");
@@ -1221,17 +1222,18 @@ inline void loadInputs(vector<pair<number, number>>& queries, vector<number>& or
 void addFakeRequests(vector<number>& blocks, number maxBlocks, number fakesNumber)
 {
 	// TODO possibly avoid sort
+	// TODO it is supposd to be sorted already
 	sort(blocks.begin(), blocks.end());
-	auto block = 0uLL;
-	for (auto j = 0uLL; j < fakesNumber; j++)
+
+	for (auto j = 0uLL, inserted = 0uLL, block = 0uLL; inserted < fakesNumber; j++)
 	{
 		if (block < blocks.size() && blocks[block] == j)
 		{
 			block++;
-			j--;
 			continue;
 		}
 		blocks.push_back(j % maxBlocks);
+		inserted++;
 	}
 }
 
