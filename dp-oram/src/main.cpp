@@ -70,6 +70,8 @@ const auto SYNTHETIC_QUERIES  = 20;
 
 auto READ_INPUTS	  = true;
 auto GENERATE_INDICES = true;
+auto DATASET_TAG	  = string("270K-1.7M-uniform");
+auto QUERYSET_TAG	  = string("270K-1.7M-uniform-500");
 
 auto DISABLE_ENCRYPTION = false;
 
@@ -98,8 +100,7 @@ const auto QUERY_INPUT_FILE	 = "query-input";
 string REDIS_HOST	  = "tcp://127.0.0.1:6379";
 string AEROSPIKE_HOST = "127.0.0.1";
 
-const auto DATA_FILE  = "../../experiments-scripts/scripts/data.csv";
-const auto QUERY_FILE = "../../experiments-scripts/scripts/query.csv";
+const auto INPUT_FILES_DIR = string("../../experiments-scripts/scripts/");
 
 auto DUMP_TO_MATTERMOST = true;
 vector<string> logLines;
@@ -155,6 +156,8 @@ int main(int argc, char* argv[])
 	desc.add_options()("bucketsNumber,b", po::value<number>(&DP_BUCKETS)->notifier(bucketsNumberCheck)->default_value(DP_BUCKETS), "the number of buckets for DP (if 0, will choose max buckets such that less than the domain size)");
 	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(USE_ORAMS), "if set will use ORAMs, otherwise each query will download everything every query");
 	desc.add_options()("useOramOptimization", po::value<bool>(&USE_ORAM_OPTIMIZATION)->default_value(USE_ORAM_OPTIMIZATION), "if set will use ORAM batch processing");
+	desc.add_options()("dataset", po::value<string>(&DATASET_TAG)->default_value(DATASET_TAG), "the dataset tag to use when reading dataset file");
+	desc.add_options()("queryset", po::value<string>(&QUERYSET_TAG)->default_value(QUERYSET_TAG), "the queryset tag to use when reading queryset file");
 	desc.add_options()("profileStorage", po::value<bool>(&PROFILE_STORAGE_REQUESTS)->default_value(PROFILE_STORAGE_REQUESTS), "if set will listen to storage events and record them");
 	desc.add_options()("virtualRequests", po::value<bool>(&VIRTUAL_REQUESTS)->default_value(VIRTUAL_REQUESTS), "if set will only simulate ORAM queries, not actually make them");
 	desc.add_options()("beta", po::value<number>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP; x such that beta = 2^{-x}");
@@ -249,7 +252,12 @@ int main(int argc, char* argv[])
 	{
 		if (READ_INPUTS)
 		{
-			ifstream dataFile(DATA_FILE);
+			auto dataFilePath = (boost::filesystem::path(INPUT_FILES_DIR) / (DATASET_TAG + ".csv")).string();
+			ifstream dataFile(dataFilePath);
+			if (!dataFile.is_open())
+			{
+				LOG(CRITICAL, boost::wformat(L"File cannot be opened: %s") % toWString(dataFilePath));
+			}
 
 			string line = "";
 			while (getline(dataFile, line))
@@ -275,7 +283,12 @@ int main(int argc, char* argv[])
 			}
 			dataFile.close();
 
-			ifstream queryFile(QUERY_FILE);
+			auto queryFilePath = (boost::filesystem::path(INPUT_FILES_DIR) / (QUERYSET_TAG + ".csv")).string();
+			ifstream queryFile(queryFilePath);
+			if (!queryFile.is_open())
+			{
+				LOG(CRITICAL, boost::wformat(L"File cannot be opened: %s") % toWString(queryFilePath));
+			}
 
 			line = "";
 			while (getline(queryFile, line))
@@ -347,6 +360,7 @@ int main(int argc, char* argv[])
 	LOG_PARAMETER(ORAM_Z);
 	LOG_PARAMETER(TREE_BLOCK_SIZE);
 	LOG_PARAMETER(USE_ORAMS);
+	LOG_PARAMETER(USE_ORAM_OPTIMIZATION);
 	LOG_PARAMETER(DISABLE_ENCRYPTION);
 	LOG_PARAMETER(PROFILE_STORAGE_REQUESTS);
 	LOG_PARAMETER(FILE_LOGGING);
@@ -662,7 +676,6 @@ int main(int argc, char* argv[])
 				if (node.first >= DP_LEVELS)
 				{
 					LOG(CRITICAL, boost::wformat(L"DP tree is not high enough. Level %1% is not generated.") % node.first);
-					exit(1);
 				}
 			}
 
@@ -1009,6 +1022,7 @@ int main(int argc, char* argv[])
 	PUT_PARAMETER(ORAM_Z);
 	PUT_PARAMETER(TREE_BLOCK_SIZE);
 	PUT_PARAMETER(USE_ORAMS);
+	PUT_PARAMETER(USE_ORAM_OPTIMIZATION);
 	PUT_PARAMETER(DISABLE_ENCRYPTION);
 	PUT_PARAMETER(PROFILE_STORAGE_REQUESTS);
 	PUT_PARAMETER(FILE_LOGGING);
@@ -1331,6 +1345,10 @@ void LOG(LOG_LEVEL level, wstring message)
 			wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
 			logFile << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(10) << converter.to_bytes(logLevelStrings[level]) << ": " << converter.to_bytes(message) << endl;
 		}
+	}
+	if (level == CRITICAL)
+	{
+		exit(1);
 	}
 }
 
