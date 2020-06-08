@@ -1224,7 +1224,7 @@ void printProfileStats(vector<profile>& profiles, number queries)
 
 		auto denominator = queries == 0 ? L"req" : L"query";
 
-		LOG(queries == 0 ? TRACE : DEBUG, boost::wformat(L"%3s: %6i req, %6i blocks (%4i / %s, %4i / ORAM), %8s (%8s / %s, %8s / ORAM), %7s (%7s / %s, %7s / ORAM)") % mode % events % batchSum % batchAverage % denominator % (batchSum / ORAMS_NUMBER) % bytesToString(sizeSum) % bytesToString(sizeAverage) % denominator % bytesToString(sizeSum / ORAMS_NUMBER) % timeToString(overheadSum) % timeToString(overheadAverage) % denominator % timeToString(overheadSum / ORAMS_NUMBER));
+		LOG(queries == 0 ? TRACE : DEBUG, boost::wformat(L"%3s: %6i req, %6i buckets (%4i / %s, %4i / ORAM), %8s (%8s / %s, %8s / ORAM), %7s (%7s / %s, %7s / ORAM)") % mode % events % batchSum % batchAverage % denominator % (batchSum / ORAMS_NUMBER) % bytesToString(sizeSum) % bytesToString(sizeAverage) % denominator % bytesToString(sizeSum / ORAMS_NUMBER) % timeToString(overheadSum) % timeToString(overheadAverage) % denominator % timeToString(overheadSum / ORAMS_NUMBER));
 	}
 	if (queries == 0)
 	{
