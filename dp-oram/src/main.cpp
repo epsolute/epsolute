@@ -31,8 +31,6 @@ using profile = tuple<bool, number, number, number>;
 // WARNING: this is supposed to be greater than the absolute value of the smallest element in the dataset
 #define OFFSET 20000000
 
-wstring timeToString(long long time);
-wstring bytesToString(long long bytes);
 number salaryToNumber(string salary);
 double numberToSalary(number salary);
 string filename(string filename, int i);
@@ -1087,54 +1085,6 @@ vector<OUTPUT> transform(const vector<INPUT>& input, function<OUTPUT(const INPUT
 	transform(input.begin(), input.end(), output.begin(), application);
 
 	return output;
-}
-
-wstring timeToString(long long time)
-{
-	wstringstream text;
-	vector<wstring> units = {
-		L"ns",
-		L"μs",
-		L"ms",
-		L"s"};
-	for (number i = 0; i < units.size(); i++)
-	{
-		if (time < 10000 || i == units.size() - 1)
-		{
-			text << time << L" " << units[i];
-			break;
-		}
-		else
-		{
-			time /= 1000;
-		}
-	}
-
-	return text.str();
-}
-
-wstring bytesToString(long long bytes)
-{
-	wstringstream text;
-	vector<wstring> units = {
-		L"B",
-		L"KB",
-		L"MB",
-		L"GB"};
-	for (number i = 0; i < units.size(); i++)
-	{
-		if (bytes < (1 << 13) || i == units.size() - 1)
-		{
-			text << bytes << L" " << units[i];
-			break;
-		}
-		else
-		{
-			bytes >>= 10;
-		}
-	}
-
-	return text.str();
 }
 
 number salaryToNumber(string salary)

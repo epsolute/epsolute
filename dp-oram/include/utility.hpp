@@ -19,4 +19,8 @@ namespace DPORAM
 	number gammaNodes(number m, double beta, number kZero);
 
 	string exec(string cmd);
+
+	wstring timeToString(long long time);
+
+	wstring bytesToString(long long bytes);
 }

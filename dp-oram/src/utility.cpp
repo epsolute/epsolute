@@ -113,4 +113,52 @@ namespace DPORAM
 			}
 		} while (true);
 	}
+
+	wstring timeToString(long long time)
+	{
+		wstringstream text;
+		vector<wstring> units = {
+			L"ns",
+			L"μs",
+			L"ms",
+			L"s"};
+		for (number i = 0; i < units.size(); i++)
+		{
+			if (time < 10000 || i == units.size() - 1)
+			{
+				text << time << L" " << units[i];
+				break;
+			}
+			else
+			{
+				time /= 1000;
+			}
+		}
+
+		return text.str();
+	}
+
+	wstring bytesToString(long long bytes)
+	{
+		wstringstream text;
+		vector<wstring> units = {
+			L"B",
+			L"KB",
+			L"MB",
+			L"GB"};
+		for (number i = 0; i < units.size(); i++)
+		{
+			if (bytes < (1 << 13) || i == units.size() - 1)
+			{
+				text << bytes << L" " << units[i];
+				break;
+			}
+			else
+			{
+				bytes >>= 10;
+			}
+		}
+
+		return text.str();
+	}
 }

@@ -34,7 +34,7 @@ DEPS = $(patsubst %, $(IDIR)/%, $(_DEPS))
 _OBJ = $(addsuffix .o, $(ENTITIES))
 OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
-TARGETS = main
+TARGETS = main redis-overhead
 TARGETBIN = $(addprefix $(BDIR)/, $(TARGETS))
 
 TESTS = brc laplace mu padding
