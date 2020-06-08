@@ -9,8 +9,8 @@ LDIR=lib
 BDIR=bin
 
 LDFLAGS=-L $(LDIR) -L /usr/local/opt/openssl/lib
-LDLIBS=-l boost_system -l boost_program_options -l boost_filesystem -l bplustree -l pathoram -l redis++ -l hiredis -l ssl -l crypto # -l dl -l z -l pthread # libs for main code
-LDTESTLIBS=-l gtest -l benchmark # libs for tests and benchmarks
+LDLIBS=-l boost_system -l boost_program_options -l boost_filesystem -l bplustree -l pathoram -l redis++ -l hiredis -l ssl -l crypto # libs for main code
+LDTESTLIBS=-l pthread -l gtest -l benchmark # libs for tests and benchmarks
 INCLUDES=-I $(IDIR) -I $(LDIR)/include
 CPPFLAGS= --std=c++17 -Wall -Wno-unknown-pragmas -fPIC -O3
 CC=g++
@@ -47,12 +47,13 @@ BENCHMARKSBIN = $(addprefix $(BDIR)/benchmark-, $(BENCHMARKS))
 INTEGRATION =
 INTEGRATIONBIN = $(addprefix $(BDIR)/test-, $(INTEGRATION))
 
-ENTRYPOINTCC = $(CC) -o $@ $^ $(CPPFLAGS) $(INCLUDES) $(LDFLAGS) $(LDLIBS) $(LDTESTLIBS)
+ENTRYPOINTCC = $(CC) -o $@ $^ $(CPPFLAGS) $(INCLUDES) $(LDFLAGS) $(LDLIBS)
 
 # flags-setting commands
 
 all: shared docs
 
+binaries: LDLIBS += $(LDTESTLIBS)
 binaries: $(TARGETBIN) $(TESTBIN) $(INTEGRATIONBIN) $(BENCHMARKSBIN)
 cleandebug: clean debug
 
@@ -106,6 +107,7 @@ run-tests-junit: $(TESTBIN)
 	$(subst ?, ,$(addsuffix &&, $(JUNITS))) echo Tests passed!
 
 run-tests: CPPFLAGS += -DTESTING
+run-tests: LDLIBS += $(LDTESTLIBS)
 run-tests: $(TESTBIN)
 	$(addsuffix &&, $(TESTBIN)) echo Tests passed!
 
