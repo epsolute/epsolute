@@ -3,6 +3,7 @@
 #include "utility.hpp"
 
 #include <boost/program_options.hpp>
+#include <iomanip>
 #include <iostream>
 
 using namespace std;
