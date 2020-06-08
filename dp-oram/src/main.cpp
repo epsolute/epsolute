@@ -96,7 +96,6 @@ const auto STATS_INPUT_FILE	 = "stats-input";
 const auto QUERY_INPUT_FILE	 = "query-input";
 
 string REDIS_HOST	  = "tcp://127.0.0.1:6379";
-string AEROSPIKE_HOST = "127.0.0.1";
 
 const auto INPUT_FILES_DIR = string("../../experiments-scripts/scripts/");
 
@@ -171,7 +170,6 @@ int main(int argc, char* argv[])
 	desc.add_options()("dumpToMattermost", po::value<bool>(&DUMP_TO_MATTERMOST)->default_value(DUMP_TO_MATTERMOST), "if set, will dump log to mattermost");
 	desc.add_options()("redis", po::value<string>(&REDIS_HOST)->default_value(REDIS_HOST), "Redis host to use");
 	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randomness)");
-	desc.add_options()("aerospike", po::value<string>(&AEROSPIKE_HOST)->default_value(AEROSPIKE_HOST), "Aerospike host to use");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -377,7 +375,6 @@ int main(int argc, char* argv[])
 
 	LOG(INFO, boost::wformat(L"ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
 	LOG(INFO, boost::wformat(L"REDIS_HOST = %1%") % toWString(REDIS_HOST));
-	LOG(INFO, boost::wformat(L"AEROSPIKE_HOST = %1%") % toWString(AEROSPIKE_HOST));
 
 #pragma endregion
 
@@ -397,7 +394,7 @@ int main(int argc, char* argv[])
 		LOG(INFO, L"Loading ORAMs and B+ tree");
 
 		// indices can be empty if generate == false
-		auto loadOram = [&profiles, &allProfiles](int i, vector<pair<number, bytes>> indices, bool generate, string redisHost, string aerospikeHost, promise<ORAMSet>* promise) -> void {
+		auto loadOram = [&profiles, &allProfiles](int i, vector<pair<number, bytes>> indices, bool generate, string redisHost, promise<ORAMSet>* promise) -> void {
 			bytes oramKey;
 			if (generate)
 			{
@@ -420,9 +417,6 @@ int main(int argc, char* argv[])
 					break;
 				case Redis:
 					oramStorage = make_shared<PathORAM::RedisStorageAdapter>((1 << ORAM_LOG_CAPACITY) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, redishost(redisHost, i), generate, ORAM_Z);
-					break;
-				case Aerospike:
-					oramStorage = make_shared<PathORAM::AerospikeStorageAdapter>((1 << ORAM_LOG_CAPACITY) + ORAM_Z, ORAM_BLOCK_SIZE, oramKey, aerospikeHost, generate, ORAM_Z, to_string(i));
 					break;
 			}
 
@@ -480,7 +474,6 @@ int main(int argc, char* argv[])
 					oramsIndex[i], // may be empty if generate == false
 					GENERATE_INDICES,
 					REDIS_HOST,
-					AEROSPIKE_HOST,
 					&promises[i]);
 			}
 
@@ -863,9 +856,6 @@ int main(int argc, char* argv[])
 			case Redis:
 				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(REDIS_HOST, -1), false, 1);
 				break;
-			case Aerospike:
-				storage = make_shared<PathORAM::AerospikeStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, AEROSPIKE_HOST, false, 1);
-				break;
 		}
 
 		if (GENERATE_INDICES)
@@ -1042,7 +1032,6 @@ int main(int argc, char* argv[])
 
 	root.put("ORAM_BACKEND", converter.to_bytes(oramBackendStrings[ORAM_STORAGE]));
 	root.put("REDIS", REDIS_HOST);
-	root.put("AEROSPIKE", AEROSPIKE_HOST);
 
 	root.put("LOG_FILENAME", logName);
 

@@ -139,15 +139,13 @@ namespace DPORAM
 	{
 		InMemory,
 		FileSystem,
-		Redis,
-		Aerospike
+		Redis
 	};
 
 	inline vector<wstring> oramBackendStrings = {
 		L"InMemory",
 		L"FileSystem",
-		L"Redis",
-		L"Aerospike"};
+		L"Redis"};
 
 	inline std::istream&
 	operator>>(std::istream& in, ORAM_BACKEND& backend)
