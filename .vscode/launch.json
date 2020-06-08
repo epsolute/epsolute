@@ -61,7 +61,8 @@
 			"type": "pickString",
 			"description": "Pick the target file to debug",
 			"options": [
-				"main"
+				"main",
+				"redis-overhead"
 			],
 			"default": "main"
 		},

@@ -59,11 +59,11 @@ int main(int argc, char* argv[])
 	}
 
 	cout << "| Experiment ID | Timestamp           | Record size | Number of buckets  | Batch size | SET time | GET time |" << endl;
-	cout << "| :-----------: | :-----------------: | :---------: | :----------------: | :--------: | :------: | :------: |" << endl;
+	cout << "| :------------ | :------------------ | :---------: | -----------------: | ---------: | -------: | -------: |" << endl;
 
 	auto experimentId = 0uLL;
 
-	for (auto&& recordBytes : vector<number>{256, 1024, 16 * 1024, 512 * 1024, 1024 * 1024})
+	for (auto&& recordBytes : vector<number>{256, 1024, 16 * 1024, 512 * 1024})
 	{
 		for (auto&& requestsNumber : vector<number>{10, 100, 1000, 10000, 100000})
 		{
@@ -72,10 +72,17 @@ int main(int argc, char* argv[])
 				experimentId++;
 				if (batchSize < 1000 && batchSize != 0 && requestsNumber > 1000)
 				{
+					// too slow with small batches
+					continue;
+				}
+				if (requestsNumber * recordBytes > 1024*1024*1024 && (batchSize == 0 || batchSize > 1000))
+				{
+					// too large requests
 					continue;
 				}
 				if (experimentId < vm["startFrom"].as<number>())
 				{
+					// skip until startFrom
 					continue;
 				}
 
