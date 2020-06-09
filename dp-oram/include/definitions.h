@@ -1,5 +1,7 @@
 #pragma once
 
+#define USE_AEROSPIKE false
+
 #include "path-oram/oram.hpp"
 
 #include <boost/algorithm/string.hpp>
