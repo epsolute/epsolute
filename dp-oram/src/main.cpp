@@ -549,7 +549,7 @@ int main(int argc, char* argv[])
 			{
 				threads[i] = thread([&rpcClients, &oramsIndex, &oramToRpcMap](number oramId) -> void {
 					rpcClients[oramToRpcMap[oramId]]->call("setOram", oramId, oramsIndex[oramId], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
-				});
+				}, i);
 			}
 
 			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
