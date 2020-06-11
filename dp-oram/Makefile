@@ -34,7 +34,7 @@ DEPS = $(patsubst %, $(IDIR)/%, $(_DEPS))
 _OBJ = $(addsuffix .o, $(ENTITIES))
 OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
-TARGETS = main redis-overhead
+TARGETS = main redis-overhead oram-server
 TARGETBIN = $(addprefix $(BDIR)/, $(TARGETS))
 
 TESTS = brc laplace mu padding
@@ -53,11 +53,12 @@ ENTRYPOINTCC = $(CC) -o $@ $^ $(CPPFLAGS) $(INCLUDES) $(LDFLAGS) $(LDLIBS)
 
 all: shared docs
 
-binaries: LDLIBS += $(LDTESTLIBS)
+binaries: LDLIBS += $(LDTESTLIBS) -l rpc
 binaries: $(TARGETBIN) $(TESTBIN) $(INTEGRATIONBIN) $(BENCHMARKSBIN)
 cleandebug: clean debug
 
 debug: CPPFLAGS += -g -DTESTING
+debug: CPPFLAGS := $(filter-out -O3,$(CPPFLAGS))
 debug: binaries
 
 profile: CPPFLAGS += -fprofile-arcs -ftest-coverage -fPIC -O0
@@ -84,6 +85,16 @@ $(INTEGRATIONBIN): $(OBJ) $$(subst $$(BDIR), $(TDIR), $$@).cpp
 shared: CPPFLAGS += -DSHARED
 shared: $(OBJ)
 	$(CC) -shared $(LDLIBS) $(LDFLAGS) -o $(BDIR)/lib$(LIBNAME).so $(OBJ)
+
+# programs
+
+main: LDLIBS += -l rpc
+main: bin/main
+
+redis: bin/redis-overhead
+
+server: LDLIBS += -l rpc
+server: bin/oram-server
 
 # objects
 

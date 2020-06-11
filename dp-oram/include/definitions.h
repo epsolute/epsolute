@@ -13,6 +13,11 @@
 
 #define KEYSIZE 32
 
+// WARNING: this is supposed to be greater than the absolute value of the smallest element in the dataset
+#define OFFSET 20000000
+
+#define RPC_PORT 8787
+
 // COLORS
 // https://stackoverflow.com/a/9158263/1644554
 

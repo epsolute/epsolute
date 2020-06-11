@@ -15,6 +15,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <rpc/client.h>
 #include <signal.h>
 #include <string>
 #include <sys/stat.h>
@@ -28,13 +29,7 @@ namespace pt = boost::property_tree;
 
 using profile = tuple<bool, number, number, number>;
 
-// WARNING: this is supposed to be greater than the absolute value of the smallest element in the dataset
-#define OFFSET 20000000
-
-number salaryToNumber(string salary);
-double numberToSalary(number salary);
 string filename(string filename, int i);
-string redishost(string host, int i);
 template <class INPUT, class OUTPUT>
 vector<OUTPUT> transform(const vector<INPUT>& input, function<OUTPUT(const INPUT&)> application);
 wstring toWString(string input);
@@ -66,6 +61,8 @@ auto VIRTUAL_REQUESTS		  = false;
 const auto BATCH_SIZE		  = 1000;
 auto SYNTHETIC_QUERIES		  = 20uLL;
 
+vector<string> RPC_HOSTS;
+
 auto READ_INPUTS	  = true;
 auto GENERATE_INDICES = true;
 auto DATASET_TAG	  = string("270K-1.7M-uniform");
@@ -95,7 +92,7 @@ const auto ORAM_STASH_FILE	 = "oram-stash";
 const auto STATS_INPUT_FILE	 = "stats-input";
 const auto QUERY_INPUT_FILE	 = "query-input";
 
-string REDIS_HOST	  = "tcp://127.0.0.1:6379";
+string REDIS_HOST = "tcp://127.0.0.1:6379";
 
 const auto INPUT_FILES_DIR = string("../../experiments-scripts/scripts/");
 
@@ -153,6 +150,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("bucketsNumber,b", po::value<number>(&DP_BUCKETS)->notifier(bucketsNumberCheck)->default_value(DP_BUCKETS), "the number of buckets for DP (if 0, will choose max buckets such that less than the domain size)");
 	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(USE_ORAMS), "if set will use ORAMs, otherwise each query will download everything every query");
 	desc.add_options()("useOramOptimization", po::value<bool>(&USE_ORAM_OPTIMIZATION)->default_value(USE_ORAM_OPTIMIZATION), "if set will use ORAM batch processing");
+	desc.add_options()("rpcHost", po::value<vector<string>>(&RPC_HOSTS)->multitoken()->composing(), "If set, will use these hosts in RPC setting; will uniformly distribute ORAMs among these hosts; may optionally include port (e.g. 127.0.0.1:8787);");
 	desc.add_options()("dataset", po::value<string>(&DATASET_TAG)->default_value(DATASET_TAG), "the dataset tag to use when reading dataset file");
 	desc.add_options()("queryset", po::value<string>(&QUERYSET_TAG)->default_value(QUERYSET_TAG), "the queryset tag to use when reading queryset file");
 	desc.add_options()("profileStorage", po::value<bool>(&PROFILE_STORAGE_REQUESTS)->default_value(PROFILE_STORAGE_REQUESTS), "if set will listen to storage events and record them");
@@ -193,8 +191,7 @@ int main(int argc, char* argv[])
 		logFile.open(boost::str(boost::format("./results/%1%.log") % logName), ios::out);
 	}
 
-	if (
-		ORAM_STORAGE == FileSystem && !USE_ORAMS && PARALLEL)
+	if (ORAM_STORAGE == FileSystem && !USE_ORAMS && PARALLEL)
 	{
 		LOG(WARNING, L"Can't use FS strawman storage in parallel. PARALLEL will be set to false.");
 		PARALLEL = false;
@@ -210,6 +207,53 @@ int main(int argc, char* argv[])
 	{
 		LOG(WARNING, L"Encryption disabled");
 		PathORAM::__blockCipherMode = PathORAM::BlockCipherMode::NONE;
+	}
+
+	if (ORAM_STORAGE != Redis && RPC_HOSTS.size() > 0)
+	{
+		LOG(WARNING, L"RPC requires Redis storage. ORAM_STORAGE will be set to Redis.");
+		ORAM_STORAGE = Redis;
+	}
+
+	if (!PARALLEL && RPC_HOSTS.size() > 0)
+	{
+		LOG(WARNING, L"RPC requires parallel execution. PARALLEL will be set to true.");
+		PARALLEL = true;
+	}
+
+	if (VIRTUAL_REQUESTS && RPC_HOSTS.size() > 0)
+	{
+		LOG(WARNING, L"RPC does not work with virtual requests. VIRTUAL_REQUESTS will be set to false.");
+		VIRTUAL_REQUESTS = false;
+	}
+
+	if (PROFILE_STORAGE_REQUESTS && RPC_HOSTS.size() > 0)
+	{
+		LOG(WARNING, L"RPC does not work with profiling. PROFILE_STORAGE_REQUESTS will be set to false.");
+		PROFILE_STORAGE_REQUESTS = false;
+	}
+
+	vector<unique_ptr<rpc::client>> rpcClients;
+	vector<number> oramToRpcMap;
+	for (auto&& rpcHost : RPC_HOSTS)
+	{
+		if (rpcHost.find(':') != string::npos)
+		{
+			vector<string> pieces;
+			boost::algorithm::split(pieces, rpcHost, boost::is_any_of(":"));
+			rpcClients.push_back(make_unique<rpc::client>(pieces[0], stoi(pieces[1])));
+		}
+		else
+		{
+			rpcClients.push_back(make_unique<rpc::client>(rpcHost, RPC_PORT));
+		}
+	}
+	if (RPC_HOSTS.size() > 0)
+	{
+		for (auto i = 0u; i < ORAMS_NUMBER; i++)
+		{
+			oramToRpcMap.push_back(i % RPC_HOSTS.size());
+		}
 	}
 
 	struct stat buffer;
@@ -358,6 +402,10 @@ int main(int argc, char* argv[])
 	LOG_PARAMETER(TREE_BLOCK_SIZE);
 	LOG_PARAMETER(USE_ORAMS);
 	LOG_PARAMETER(USE_ORAM_OPTIMIZATION);
+	for (auto&& rpcHost : RPC_HOSTS)
+	{
+		LOG_PARAMETER(toWString(rpcHost));
+	}
 	LOG_PARAMETER(DISABLE_ENCRYPTION);
 	LOG_PARAMETER(PROFILE_STORAGE_REQUESTS);
 	LOG_PARAMETER(FILE_LOGGING);
@@ -463,7 +511,7 @@ int main(int argc, char* argv[])
 		promise<ORAMSet> promises[ORAMS_NUMBER];
 		future<ORAMSet> futures[ORAMS_NUMBER];
 
-		if (!VIRTUAL_REQUESTS)
+		if (!VIRTUAL_REQUESTS && rpcClients.size() == 0)
 		{
 			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 			{
@@ -487,6 +535,14 @@ int main(int argc, char* argv[])
 		else
 		{
 			oramSets.resize(ORAMS_NUMBER);
+		}
+
+		if (rpcClients.size() > 0)
+		{
+			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+			{
+				rpcClients[oramToRpcMap[i]]->call("setOram", i, oramsIndex[i], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
+			}
 		}
 
 		auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), GENERATE_INDICES);
@@ -581,6 +637,12 @@ int main(int argc, char* argv[])
 
 		// returns tuple<# real records, thread overhead, # of processed requests>
 		using queryReturnType = tuple<number, chrono::steady_clock::rep, number>;
+		using rpcReturnType	  = vector<tuple<vector<bytes>, chrono::steady_clock::rep, number>>;
+
+		auto queryRpc = [&rpcClients](number rpcClientId, const vector<pair<number, vector<number>>>& ids, pair<number, number> query, promise<rpcReturnType>* promise) -> void {
+			auto result = rpcClients[rpcClientId]->call("runQuery", ids, query).as<rpcReturnType>();
+			promise->set_value(result);
+		};
 
 		auto queryOram = [](const vector<number>& ids, shared_ptr<PathORAM::ORAM> oram, number from, number to, promise<queryReturnType>* promise) -> queryReturnType {
 			vector<bytes> answer;
@@ -732,7 +794,44 @@ int main(int argc, char* argv[])
 				vector<chrono::steady_clock::rep> threadOverheads;
 				vector<number> threadAnswerSizes;
 
-				if (PARALLEL)
+				if (RPC_HOSTS.size() > 0)
+				{
+					thread threads[RPC_HOSTS.size()];
+					promise<rpcReturnType> promises[RPC_HOSTS.size()];
+					future<rpcReturnType> futures[RPC_HOSTS.size()];
+
+					timestampBeforeORAMs = chrono::steady_clock::now();
+
+					for (auto rpcHostId = 0uLL; rpcHostId < RPC_HOSTS.size(); rpcHostId++)
+					{
+						vector<pair<number, vector<number>>> ids;
+						for (auto oramId = 0uLL; oramId < oramToRpcMap.size(); oramId++)
+						{
+							if (oramToRpcMap[oramId] == rpcHostId)
+							{
+								ids.push_back({oramId, blockIds[oramId]});
+							}
+						}
+
+						futures[rpcHostId] = promises[rpcHostId].get_future();
+						threads[rpcHostId] = thread(queryRpc, rpcHostId, ids, query, &promises[rpcHostId]);
+					}
+
+					for (auto i = 0uLL; i < RPC_HOSTS.size(); i++)
+					{
+						auto returned = futures[i].get();
+						for (auto&& threadRunResult : returned)
+						{
+							realRecordsNumber += get<0>(threadRunResult).size();
+							threadOverheads.push_back(get<1>(threadRunResult));
+							threadAnswerSizes.push_back(get<2>(threadRunResult));
+						}
+						threads[i].join();
+					}
+
+					timestampAfterORAMs = chrono::steady_clock::now();
+				}
+				else if (PARALLEL)
 				{
 					thread threads[ORAMS_NUMBER];
 					promise<queryReturnType> promises[ORAMS_NUMBER];
@@ -818,7 +917,7 @@ int main(int argc, char* argv[])
 			queryIndex++;
 		}
 
-		if (!VIRTUAL_REQUESTS)
+		if (!VIRTUAL_REQUESTS && rpcClients.size() == 0)
 		{
 			LOG(INFO, L"Saving ORAMs position map and stash to files");
 			for (auto i = 0uLL; i < oramSets.size(); i++)
@@ -1017,6 +1116,10 @@ int main(int argc, char* argv[])
 	PUT_PARAMETER(TREE_BLOCK_SIZE);
 	PUT_PARAMETER(USE_ORAMS);
 	PUT_PARAMETER(USE_ORAM_OPTIMIZATION);
+	for (auto&& rpcHost : RPC_HOSTS)
+	{
+		PUT_PARAMETER(rpcHost);
+	}
 	PUT_PARAMETER(DISABLE_ENCRYPTION);
 	PUT_PARAMETER(PROFILE_STORAGE_REQUESTS);
 	PUT_PARAMETER(FILE_LOGGING);
@@ -1076,26 +1179,9 @@ vector<OUTPUT> transform(const vector<INPUT>& input, function<OUTPUT(const INPUT
 	return output;
 }
 
-number salaryToNumber(string salary)
-{
-	auto salaryDouble = stod(salary) * 100;
-	auto salaryNumber = (long long)salaryDouble + OFFSET;
-	return (number)salaryNumber;
-}
-
-double numberToSalary(number salary)
-{
-	return ((long long)salary - OFFSET) * 0.01;
-}
-
 string filename(string filename, int i)
 {
 	return string(FILES_DIR) + "/" + filename + (i > -1 ? ("-" + to_string(i)) : "") + ".bin";
-}
-
-string redishost(string host, int i)
-{
-	return host + (i > -1 ? ("/" + to_string(i)) : "");
 }
 
 wstring toWString(string input)

@@ -11,10 +11,19 @@
 			"preLaunchTask": "build"
 		},
 		{
-			"name": "Target",
+			"name": "Server",
 			"type": "lldb",
 			"request": "launch",
-			"program": "${workspaceFolder}/dp-oram/bin/${input:target}",
+			"program": "${workspaceFolder}/dp-oram/bin/oram-server",
+			"args": [],
+			"cwd": "${workspaceFolder}/dp-oram/",
+			"preLaunchTask": "build"
+		},
+		{
+			"name": "Main",
+			"type": "lldb",
+			"request": "launch",
+			"program": "${workspaceFolder}/dp-oram/bin/main",
 			"args": [
 				"--generateIndices",
 				"${input:generateIndices}",
@@ -55,16 +64,6 @@
 				"padding"
 			],
 			"default": "laplace"
-		},
-		{
-			"id": "target",
-			"type": "pickString",
-			"description": "Pick the target file to debug",
-			"options": [
-				"main",
-				"redis-overhead"
-			],
-			"default": "main"
 		},
 		{
 			"id": "generateIndices",

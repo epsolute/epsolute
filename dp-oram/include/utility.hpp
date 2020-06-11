@@ -23,4 +23,10 @@ namespace DPORAM
 	wstring timeToString(long long time);
 
 	wstring bytesToString(long long bytes);
+
+	number salaryToNumber(string salary);
+
+	double numberToSalary(number salary);
+
+	string redishost(string host, int i);
 }

@@ -161,4 +161,21 @@ namespace DPORAM
 
 		return text.str();
 	}
+
+	number salaryToNumber(string salary)
+	{
+		auto salaryDouble = stod(salary) * 100;
+		auto salaryNumber = (long long)salaryDouble + OFFSET;
+		return (number)salaryNumber;
+	}
+
+	double numberToSalary(number salary)
+	{
+		return ((long long)salary - OFFSET) * 0.01;
+	}
+
+	string redishost(string host, int i)
+	{
+		return host + (i > -1 ? ("/" + to_string(i)) : "");
+	}
 }

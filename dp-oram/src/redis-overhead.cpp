@@ -75,7 +75,7 @@ int main(int argc, char* argv[])
 					// too slow with small batches
 					continue;
 				}
-				if (requestsNumber * recordBytes > 1024*1024*1024 && (batchSize == 0 || batchSize > 1000))
+				if (requestsNumber * recordBytes > 1024 * 1024 * 1024 && (batchSize == 0 || batchSize > 1000))
 				{
 					// too large requests
 					continue;
