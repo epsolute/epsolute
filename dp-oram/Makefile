@@ -9,8 +9,8 @@ LDIR=lib
 BDIR=bin
 
 LDFLAGS=-L $(LDIR) -L /usr/local/opt/openssl/lib
-LDLIBS=-l boost_system -l boost_program_options -l boost_filesystem -l bplustree -l pathoram -l redis++ -l hiredis -l ssl -l crypto # libs for main code
-LDTESTLIBS=-l pthread -l gtest -l benchmark # libs for tests and benchmarks
+LDLIBS=-l boost_system -l boost_program_options -l boost_filesystem -l bplustree -l pathoram -l redis++ -l hiredis -l ssl -l crypto -l pthread # libs for main code
+LDTESTLIBS=-l gtest -l benchmark # libs for tests and benchmarks
 INCLUDES=-I $(IDIR) -I $(LDIR)/include
 CPPFLAGS= --std=c++17 -Wall -Wno-unknown-pragmas -fPIC -O3
 CC=g++
