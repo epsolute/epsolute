@@ -26,6 +26,7 @@ using queryReturnType = tuple<vector<bytes>, chrono::steady_clock::rep, number>;
 
 void setOram(number oramNumber, vector<pair<number, bytes>> indices, number logCapacity, number blockSize, number z);
 vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, pair<number, number> query);
+void reset();
 
 int main(int argc, char* argv[])
 {
@@ -50,9 +51,16 @@ int main(int argc, char* argv[])
 	rpc::server srv(PORT);
 	srv.bind("setOram", &setOram);
 	srv.bind("runQuery", &runQuery);
+	srv.bind("reset", &reset);
 	srv.run();
 
 	return 0;
+}
+
+void reset()
+{
+	orams.clear();
+	cout << "reset: done" << endl;
 }
 
 vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, pair<number, number> query)

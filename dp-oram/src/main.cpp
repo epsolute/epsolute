@@ -254,6 +254,10 @@ int main(int argc, char* argv[])
 		{
 			oramToRpcMap.push_back(i % RPC_HOSTS.size());
 		}
+		for (auto&& rpcClient : rpcClients)
+		{
+			rpcClient->call("reset");
+		}
 	}
 
 	struct stat buffer;
@@ -541,6 +545,7 @@ int main(int argc, char* argv[])
 		{
 			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 			{
+				// TODO make parallel
 				rpcClients[oramToRpcMap[i]]->call("setOram", i, oramsIndex[i], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
 			}
 		}
