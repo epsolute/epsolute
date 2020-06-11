@@ -543,10 +543,18 @@ int main(int argc, char* argv[])
 
 		if (rpcClients.size() > 0)
 		{
+			thread threads[ORAMS_NUMBER];
+
 			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 			{
-				// TODO make parallel
-				rpcClients[oramToRpcMap[i]]->call("setOram", i, oramsIndex[i], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
+				threads[i] = thread([&rpcClients, &oramsIndex, &oramToRpcMap](number oramId) -> void {
+					rpcClients[oramToRpcMap[oramId]]->call("setOram", oramId, oramsIndex[oramId], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
+				});
+			}
+
+			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+			{
+				threads[i].join();
 			}
 		}
 
