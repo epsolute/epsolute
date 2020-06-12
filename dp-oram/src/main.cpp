@@ -92,7 +92,7 @@ const auto ORAM_STASH_FILE	 = "oram-stash";
 const auto STATS_INPUT_FILE	 = "stats-input";
 const auto QUERY_INPUT_FILE	 = "query-input";
 
-string REDIS_HOST = "tcp://127.0.0.1:6379";
+vector<string> REDIS_HOSTS;
 
 const auto INPUT_FILES_DIR = string("../../experiments-scripts/scripts/");
 
@@ -166,7 +166,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("fileLogging", po::value<bool>(&FILE_LOGGING)->default_value(FILE_LOGGING), "if set, log stream will be duplicated to file (noticeably slows down simulation)");
 	desc.add_options()("disableEncryption", po::value<bool>(&DISABLE_ENCRYPTION)->default_value(DISABLE_ENCRYPTION), "if set, will disable encryption in ORAM");
 	desc.add_options()("dumpToMattermost", po::value<bool>(&DUMP_TO_MATTERMOST)->default_value(DUMP_TO_MATTERMOST), "if set, will dump log to mattermost");
-	desc.add_options()("redis", po::value<string>(&REDIS_HOST)->default_value(REDIS_HOST), "Redis host to use");
+	desc.add_options()("redis", po::value<vector<string>>(&REDIS_HOSTS)->multitoken()->composing(), "Redis host(s) to use. If multiple specified, will distribute uniformly. Default tcp://127.0.0.1:6379 .");
 	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randomness)");
 
 	po::variables_map vm;
@@ -231,6 +231,11 @@ int main(int argc, char* argv[])
 	{
 		LOG(WARNING, L"RPC does not work with profiling. PROFILE_STORAGE_REQUESTS will be set to false.");
 		PROFILE_STORAGE_REQUESTS = false;
+	}
+
+	if (ORAM_STORAGE == Redis && REDIS_HOSTS.size() == 0)
+	{
+		REDIS_HOSTS.push_back("tcp://127.0.0.1:6379");
 	}
 
 	vector<unique_ptr<rpc::client>> rpcClients;
@@ -426,7 +431,10 @@ int main(int argc, char* argv[])
 	LOG(INFO, boost::wformat(L"QUERYSET_TAG = %1%") % toWString(QUERYSET_TAG));
 
 	LOG(INFO, boost::wformat(L"ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
-	LOG(INFO, boost::wformat(L"REDIS_HOST = %1%") % toWString(REDIS_HOST));
+	for (auto&& redisHost : REDIS_HOSTS)
+	{
+		LOG_PARAMETER(toWString(redisHost));
+	}
 
 #pragma endregion
 
@@ -525,7 +533,7 @@ int main(int argc, char* argv[])
 					i,
 					oramsIndex[i], // may be empty if generate == false
 					GENERATE_INDICES,
-					REDIS_HOST,
+					REDIS_HOSTS[i % REDIS_HOSTS.size()],
 					&promises[i]);
 			}
 
@@ -547,9 +555,11 @@ int main(int argc, char* argv[])
 
 			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 			{
-				threads[i] = thread([&rpcClients, &oramsIndex, &oramToRpcMap](number oramId) -> void {
-					rpcClients[oramToRpcMap[oramId]]->call("setOram", oramId, oramsIndex[oramId], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
-				}, i);
+				threads[i] = thread(
+					[&rpcClients, &oramsIndex, &oramToRpcMap](number oramId) -> void {
+						rpcClients[oramToRpcMap[oramId]]->call("setOram", oramId, oramsIndex[oramId], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
+					},
+					i);
 			}
 
 			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
@@ -966,7 +976,7 @@ int main(int argc, char* argv[])
 				storage = make_shared<PathORAM::FileSystemStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, filename(ORAM_STORAGE_FILE, -1), false, 1);
 				break;
 			case Redis:
-				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(REDIS_HOST, -1), false, 1);
+				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(REDIS_HOSTS[0], -1), false, 1);
 				break;
 		}
 
@@ -1147,7 +1157,10 @@ int main(int argc, char* argv[])
 	PUT_PARAMETER(DP_USE_GAMMA);
 
 	root.put("ORAM_BACKEND", converter.to_bytes(oramBackendStrings[ORAM_STORAGE]));
-	root.put("REDIS", REDIS_HOST);
+	for (auto&& redisHost : REDIS_HOSTS)
+	{
+		PUT_PARAMETER(redisHost);
+	}
 
 	root.put("LOG_FILENAME", logName);
 
