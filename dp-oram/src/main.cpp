@@ -233,7 +233,7 @@ int main(int argc, char* argv[])
 		PROFILE_STORAGE_REQUESTS = false;
 	}
 
-	if (ORAM_STORAGE == Redis && REDIS_HOSTS.size() == 0)
+	if (REDIS_HOSTS.size() == 0)
 	{
 		REDIS_HOSTS.push_back("tcp://127.0.0.1:6379");
 	}
