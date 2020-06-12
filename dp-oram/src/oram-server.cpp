@@ -19,6 +19,7 @@ auto ORAM_BLOCK_SIZE	   = 256uLL;
 number PORT				   = RPC_PORT;
 auto USE_ORAM_OPTIMIZATION = true;
 
+mutex orams_mutex;
 vector<pair<number, shared_ptr<PathORAM::ORAM>>> orams;
 
 // returns tuple<real records, thread overhead, # of processed requests>
@@ -173,6 +174,8 @@ void setOram(number oramNumber, vector<pair<number, bytes>> indices, number logC
 		ULONG_MAX);
 
 	oram->load(indices);
+
+	lock_guard<mutex> guard(orams_mutex);
 
 	orams.push_back({oramNumber, oram});
 
