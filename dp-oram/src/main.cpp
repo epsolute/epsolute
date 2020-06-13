@@ -55,6 +55,7 @@ auto ORAM_Z					  = 3uLL;
 const auto TREE_BLOCK_SIZE	  = 64uLL;
 auto ORAM_STORAGE			  = FileSystem;
 auto PROFILE_STORAGE_REQUESTS = false;
+auto PROFILE_THREADS		  = false;
 auto USE_ORAMS				  = true;
 auto USE_ORAM_OPTIMIZATION	  = true;
 auto VIRTUAL_REQUESTS		  = false;
@@ -154,8 +155,9 @@ int main(int argc, char* argv[])
 	desc.add_options()("rpcHost", po::value<vector<string>>(&RPC_HOSTS)->multitoken()->composing(), "If set, will use these hosts in RPC setting; will uniformly distribute ORAMs among these hosts; may optionally include port (e.g. 127.0.0.1:8787);");
 	desc.add_options()("dataset", po::value<string>(&DATASET_TAG)->default_value(DATASET_TAG), "the dataset tag to use when reading dataset file");
 	desc.add_options()("queryset", po::value<string>(&QUERYSET_TAG)->default_value(QUERYSET_TAG), "the queryset tag to use when reading queryset file");
-	desc.add_options()("profileStorage", po::value<bool>(&PROFILE_STORAGE_REQUESTS)->default_value(PROFILE_STORAGE_REQUESTS), "if set will listen to storage events and record them");
-	desc.add_options()("virtualRequests", po::value<bool>(&VIRTUAL_REQUESTS)->default_value(VIRTUAL_REQUESTS), "if set will only simulate ORAM queries, not actually make them");
+	desc.add_options()("profileStorage", po::value<bool>(&PROFILE_STORAGE_REQUESTS)->default_value(PROFILE_STORAGE_REQUESTS), "if set, will listen to storage events and record them");
+	desc.add_options()("profileThreads", po::value<bool>(&PROFILE_THREADS)->default_value(PROFILE_THREADS), "if set, will log additional data on threads performance");
+	desc.add_options()("virtualRequests", po::value<bool>(&VIRTUAL_REQUESTS)->default_value(VIRTUAL_REQUESTS), "if set, will only simulate ORAM queries, not actually make them");
 	desc.add_options()("beta", po::value<number>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP; x such that beta = 2^{-x}");
 	desc.add_options()("epsilon", po::value<number>(&DP_EPSILON)->notifier(epsilonCheck)->default_value(DP_EPSILON), "epsilon parameter for DP");
 	desc.add_options()("useGamma", po::value<bool>(&DP_USE_GAMMA)->default_value(DP_USE_GAMMA), "if set, will use Gamma method to add noise per ORAM");
@@ -922,6 +924,21 @@ int main(int argc, char* argv[])
 				auto threadOverheadsStdDev	  = sqrt(threadOverheadsSquareSum / threadOverheads.size() - threadOverheadsMean * threadOverheadsMean);
 
 				LOG(TRACE, boost::wformat(L"Query: {before: %7s, ORAMs: %7s, after: %7s}, threads: {min: %7s (%4i), max: %7s (%4i), avg: %7s, stddev: %7s}") % timeToString(queryOverheadBefore) % timeToString(queryOverheadORAMs) % timeToString(queryOverheadAfter) % timeToString(threadOverheadsMin) % threadAnswersizeMin % timeToString(threadOverheadsMax) % threadAnswersizeMax % timeToString(threadOverheadsMean) % timeToString(threadOverheadsStdDev));
+				if (PROFILE_THREADS)
+				{
+					wstringstream wss;
+					wss << L"Threads: [ ";
+					for (auto i = 0; i < ORAMS_NUMBER; i++)
+					{
+						wss << timeToString(threadOverheads[i]);
+						if (i != ORAMS_NUMBER - 1)
+						{
+							wss << ", ";
+						}
+					}
+					wss << L" ]";
+					LOG(TRACE, wss.str());
+				}
 			}
 			else
 			{
