@@ -557,7 +557,7 @@ int main(int argc, char* argv[])
 			{
 				threads[i] = thread(
 					[&rpcClients, &oramsIndex, &oramToRpcMap](number oramId) -> void {
-						rpcClients[oramToRpcMap[oramId]]->call("setOram", oramId, oramsIndex[oramId], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
+						rpcClients[oramToRpcMap[oramId]]->call("setOram", oramId, REDIS_HOSTS[oramId % REDIS_HOSTS.size()], oramsIndex[oramId], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
 					},
 					i);
 			}

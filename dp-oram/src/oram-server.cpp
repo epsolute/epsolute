@@ -14,7 +14,6 @@ using namespace DPORAM;
 
 namespace po = boost::program_options;
 
-string REDIS_HOST		   = "tcp://127.0.0.1:6379";
 auto ORAM_BLOCK_SIZE	   = 256uLL;
 number PORT				   = RPC_PORT;
 auto USE_ORAM_OPTIMIZATION = true;
@@ -25,7 +24,7 @@ vector<pair<number, shared_ptr<PathORAM::ORAM>>> orams;
 // returns tuple<real records, thread overhead, # of processed requests>
 using queryReturnType = tuple<vector<bytes>, chrono::steady_clock::rep, number>;
 
-void setOram(number oramNumber, vector<pair<number, bytes>> indices, number logCapacity, number blockSize, number z);
+void setOram(number oramNumber, string redisHost, vector<pair<number, bytes>> indices, number logCapacity, number blockSize, number z);
 vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, pair<number, number> query);
 void reset();
 
@@ -33,7 +32,6 @@ int main(int argc, char* argv[])
 {
 	po::options_description desc("Redis overhead macro benchmark", 120);
 	desc.add_options()("help,h", "produce help message");
-	desc.add_options()("redis", po::value<string>(&REDIS_HOST)->default_value(REDIS_HOST), "Redis host to use");
 	desc.add_options()("port", po::value<number>(&PORT)->default_value(PORT), "Port to bind to");
 	desc.add_options()("useOramOptimization", po::value<bool>(&USE_ORAM_OPTIMIZATION)->default_value(USE_ORAM_OPTIMIZATION), "if set will use ORAM batch processing");
 
@@ -47,7 +45,7 @@ int main(int argc, char* argv[])
 		exit(1);
 	}
 
-	cout << "main: redis=" << REDIS_HOST << ", optimize=" << USE_ORAM_OPTIMIZATION << endl;
+	cout << "main: optimize=" << USE_ORAM_OPTIMIZATION << endl;
 
 	rpc::server srv(PORT);
 	srv.bind("setOram", &setOram);
@@ -159,7 +157,7 @@ vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, 
 	return result;
 }
 
-void setOram(number oramNumber, vector<pair<number, bytes>> indices, number logCapacity, number blockSize, number z)
+void setOram(number oramNumber, string redisHost, vector<pair<number, bytes>> indices, number logCapacity, number blockSize, number z)
 {
 	cout << "setOram: ID " << oramNumber << ", indices length " << indices.size() << ", logCapacity=" << logCapacity << ", blockSize=" << blockSize << ", z=" << z << endl;
 
@@ -167,7 +165,7 @@ void setOram(number oramNumber, vector<pair<number, bytes>> indices, number logC
 		logCapacity,
 		blockSize,
 		z,
-		make_shared<PathORAM::RedisStorageAdapter>((1 << logCapacity) + z, ORAM_BLOCK_SIZE, PathORAM::getRandomBlock(KEYSIZE), redishost(REDIS_HOST, oramNumber), true, z),
+		make_shared<PathORAM::RedisStorageAdapter>((1 << logCapacity) + z, ORAM_BLOCK_SIZE, PathORAM::getRandomBlock(KEYSIZE), redishost(redisHost, oramNumber), true, z),
 		make_shared<PathORAM::InMemoryPositionMapAdapter>(((1 << logCapacity) * z) + z),
 		make_shared<PathORAM::InMemoryStashAdapter>(3 * logCapacity * z),
 		true,
