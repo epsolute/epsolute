@@ -1101,6 +1101,11 @@ int main(int argc, char* argv[])
 
 	LOG(INFO, L"Complete!");
 
+	for (auto&& rpcClient : rpcClients)
+	{
+		rpcClient->call("reset");
+	}
+
 	auto avg = [&measurements](function<number(const measurement&)> getter) -> pair<number, number> {
 		auto values = transform<measurement, number>(measurements, getter);
 		auto sum	= accumulate(values.begin(), values.end(), 0LL);
