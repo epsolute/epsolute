@@ -93,6 +93,7 @@ const auto STATS_INPUT_FILE	 = "stats-input";
 const auto QUERY_INPUT_FILE	 = "query-input";
 
 vector<string> REDIS_HOSTS;
+auto REDIS_FLUSH_ALL = false;
 
 const auto INPUT_FILES_DIR = string("../../experiments-scripts/scripts/");
 
@@ -166,6 +167,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("fileLogging", po::value<bool>(&FILE_LOGGING)->default_value(FILE_LOGGING), "if set, log stream will be duplicated to file (noticeably slows down simulation)");
 	desc.add_options()("disableEncryption", po::value<bool>(&DISABLE_ENCRYPTION)->default_value(DISABLE_ENCRYPTION), "if set, will disable encryption in ORAM");
 	desc.add_options()("dumpToMattermost", po::value<bool>(&DUMP_TO_MATTERMOST)->default_value(DUMP_TO_MATTERMOST), "if set, will dump log to mattermost");
+	desc.add_options()("redisFlushAll", po::value<bool>(&REDIS_FLUSH_ALL)->default_value(REDIS_FLUSH_ALL), "if set, will execute FLUSHALL for all supplied redis hosts");
 	desc.add_options()("redis", po::value<vector<string>>(&REDIS_HOSTS)->multitoken()->composing(), "Redis host(s) to use. If multiple specified, will distribute uniformly. Default tcp://127.0.0.1:6379 .");
 	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randomness)");
 
@@ -236,6 +238,15 @@ int main(int argc, char* argv[])
 	if (REDIS_HOSTS.size() == 0)
 	{
 		REDIS_HOSTS.push_back("tcp://127.0.0.1:6379");
+	}
+
+	if (REDIS_FLUSH_ALL)
+	{
+		LOG(WARNING, L"REDIS_FLUSH_ALL is set, will delete all databases in supplied hosts.");
+		for (auto&& redisHost : REDIS_HOSTS)
+		{
+			sw::redis::Redis(redisHost).flushall();
+		}
 	}
 
 	vector<unique_ptr<rpc::client>> rpcClients;
