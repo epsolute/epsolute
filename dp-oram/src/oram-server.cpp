@@ -159,7 +159,7 @@ vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, 
 
 void setOram(number oramNumber, string redisHost, vector<pair<number, bytes>> indices, number logCapacity, number blockSize, number z)
 {
-	cout << "setOram: ID " << oramNumber << ", indices length " << indices.size() << ", logCapacity=" << logCapacity << ", blockSize=" << blockSize << ", z=" << z << endl;
+	cout << "setOram: ID " << oramNumber << ", redis: " << redisHost << ", indices length " << indices.size() << ", logCapacity=" << logCapacity << ", blockSize=" << blockSize << ", z=" << z << endl;
 
 	auto oram = make_shared<PathORAM::ORAM>(
 		logCapacity,
