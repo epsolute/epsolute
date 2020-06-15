@@ -46,5 +46,5 @@ cd ~/b-plus-tree/b-plus-tree/
 make clean && make shared -j8
 
 cd ~/dp-oram/dp-oram/
-make clean copy-libs-dev && sudo make ldconfig && make main redis server
+make clean copy-libs-dev && sudo make ldconfig && make main redis server -j8
 ```

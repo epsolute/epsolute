@@ -930,7 +930,7 @@ int main(int argc, char* argv[])
 				{
 					wstringstream wss;
 					wss << L"Threads: [ ";
-					for (auto i = 0; i < ORAMS_NUMBER; i++)
+					for (auto i = 0u; i < ORAMS_NUMBER; i++)
 					{
 						wss << timeToString(threadOverheads[i]);
 						if (i != ORAMS_NUMBER - 1)
