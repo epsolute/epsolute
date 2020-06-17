@@ -457,8 +457,8 @@ int main(int argc, char* argv[])
 
 #pragma region CONSTRUCT_INDICES
 
-	// vector<tuple<elapsed, real, padding, noise, total>>
-	using measurement = tuple<number, number, number, number, number>;
+	// vector<tuple<elapsed, fastest thread, real, padding, noise, total>>
+	using measurement = tuple<number, number, number, number, number, number>;
 	vector<measurement> measurements;
 
 	vector<profile> profiles;
@@ -759,6 +759,7 @@ int main(int argc, char* argv[])
 
 			number realRecordsNumber  = 0;
 			number totalRecordsNumber = 0;
+			number fastestThread	  = 0;
 
 			// DP padding
 			auto [fromBucket, toBucket, from, to] = padToBuckets(query, MIN_VALUE, MAX_VALUE, DP_BUCKETS);
@@ -927,6 +928,8 @@ int main(int argc, char* argv[])
 				auto threadOverheadsSquareSum = inner_product(threadOverheads.begin(), threadOverheads.end(), threadOverheads.begin(), 0uLL);
 				auto threadOverheadsStdDev	  = sqrt(threadOverheadsSquareSum / threadOverheads.size() - threadOverheadsMean * threadOverheadsMean);
 
+				fastestThread = threadOverheadsMin;
+
 				LOG(TRACE, boost::wformat(L"Query: {before: %7s, ORAMs: %7s, after: %7s}, threads: {min: %7s (%4i), max: %7s (%4i), avg: %7s, stddev: %7s}") % timeToString(queryOverheadBefore) % timeToString(queryOverheadORAMs) % timeToString(queryOverheadAfter) % timeToString(threadOverheadsMin) % threadAnswersizeMin % timeToString(threadOverheadsMax) % threadAnswersizeMax % timeToString(threadOverheadsMean) % timeToString(threadOverheadsStdDev));
 				if (PROFILE_THREADS)
 				{
@@ -954,7 +957,7 @@ int main(int argc, char* argv[])
 			auto paddingRecordsNumber = totalRecordsNumber >= (totalNoise + realRecordsNumber) ? totalRecordsNumber - totalNoise - realRecordsNumber : 0;
 
 			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
-			measurements.push_back({elapsed, realRecordsNumber, paddingRecordsNumber, totalNoise, totalRecordsNumber});
+			measurements.push_back({elapsed, fastestThread, realRecordsNumber, paddingRecordsNumber, totalNoise, totalRecordsNumber});
 
 			LOG(DEBUG, boost::wformat(L"Query %3i / %3i : {%9.2f, %9.2f} the real records %6i ( +%6i padding, +%6i noise, %6i total) (%7s, or %7s / record)") % queryIndex % queries.size() % numberToSalary(query.first) % numberToSalary(query.second) % realRecordsNumber % paddingRecordsNumber % totalNoise % totalRecordsNumber % timeToString(elapsed) % (realRecordsNumber > 0 ? timeToString(elapsed / realRecordsNumber) : L"0 ns"));
 
@@ -1111,7 +1114,7 @@ int main(int argc, char* argv[])
 			}
 
 			auto elapsed = chrono::duration_cast<chrono::nanoseconds>(chrono::steady_clock::now() - start).count();
-			measurements.push_back({elapsed, count, 0, COUNT - count, COUNT});
+			measurements.push_back({elapsed, 0, count, 0, COUNT - count, COUNT});
 
 			LOG(DEBUG, boost::wformat(L"Query %3i / %3i : {%9.2f, %9.2f} the result size is %3i (completed in %7s, or %7s per record)") % queryIndex % queries.size() % numberToSalary(query.first) % numberToSalary(query.second) % count % timeToString(elapsed) % (count > 0 ? timeToString(elapsed / count) : L"0 ns"));
 
@@ -1133,15 +1136,16 @@ int main(int argc, char* argv[])
 		return {sum, sum / values.size()};
 	};
 
-	auto [timeTotal, timePerQuery] = avg([](measurement v) { return get<0>(v); });
-	auto [realTotal, realPerQuery] = avg([](measurement v) { return get<1>(v); });
-	auto paddingPerQuery		   = avg([](measurement v) { return get<2>(v); }).second;
-	auto noisePerQuery			   = avg([](measurement v) { return get<3>(v); }).second;
-	auto totalPerQuery			   = avg([](measurement v) { return get<4>(v); }).second;
+	auto [timeTotal, timePerQuery]	 = avg([](measurement v) { return get<0>(v); });
+	auto fastestThreadPerQuery		 = avg([](measurement v) { return get<1>(v); }).second;
+	auto [realTotal, realPerQuery]	 = avg([](measurement v) { return get<2>(v); });
+	auto paddingPerQuery			 = avg([](measurement v) { return get<3>(v); }).second;
+	auto noisePerQuery				 = avg([](measurement v) { return get<4>(v); }).second;
+	auto [totalTotal, totalPerQuery] = avg([](measurement v) { return get<5>(v); });
 
 #pragma region WRITE_JSON
 
-	LOG(INFO, boost::wformat(L"For %1% queries: total: %2%, average: %3% per query, %4% per result item; (%5%+%6%+%7%=%8%) records per query") % (queryIndex - 1) % timeToString(timeTotal) % timeToString(timePerQuery) % timeToString(timeTotal / realTotal) % realPerQuery % paddingPerQuery % noisePerQuery % totalPerQuery);
+	LOG(INFO, boost::wformat(L"For %1% queries: total: %2%, average: %3% / query, fastest thread: %4% / query, %5% / fetched item; (%6%+%7%+%8%=%9%) records / query") % (queryIndex - 1) % timeToString(timeTotal) % timeToString(timePerQuery) % timeToString(fastestThreadPerQuery) % timeToString(timeTotal / totalTotal) % realPerQuery % paddingPerQuery % noisePerQuery % totalPerQuery);
 	if (PROFILE_STORAGE_REQUESTS)
 	{
 		printProfileStats(allProfiles, queryIndex - 1);
@@ -1156,10 +1160,11 @@ int main(int argc, char* argv[])
 	{
 		pt::ptree overhead;
 		overhead.put("overhead", get<0>(measurement));
-		overhead.put("real", get<1>(measurement));
-		overhead.put("padding", get<2>(measurement));
-		overhead.put("noise", get<3>(measurement));
-		overhead.put("total", get<4>(measurement));
+		overhead.put("fastestThread", get<1>(measurement));
+		overhead.put("real", get<2>(measurement));
+		overhead.put("padding", get<3>(measurement));
+		overhead.put("noise", get<4>(measurement));
+		overhead.put("total", get<5>(measurement));
 		overheadsNode.push_back({"", overhead});
 	}
 
@@ -1206,6 +1211,7 @@ int main(int argc, char* argv[])
 	pt::ptree aggregates;
 	aggregates.put("timeTotal", timeTotal);
 	aggregates.put("timePerQuery", timePerQuery);
+	aggregates.put("fastestThreadPerQuery", fastestThreadPerQuery);
 	aggregates.put("realTotal", realTotal);
 	aggregates.put("realPerQuery", realPerQuery);
 	aggregates.put("paddingPerQuery", paddingPerQuery);
