@@ -131,6 +131,7 @@ int main(int argc, char* argv[])
 #pragma region COMMAND_LINE_ARGUMENTS
 
 	auto oramsNumberCheck	= [](number v) { if (v < 1) { throw Exception("malformed --oramsNumber"); } };
+	auto recordSizeCheck	= [](number v) { if (v < 256uLL) { throw Exception("--recordSize too small"); } };
 	auto epsilonCheck		= [](number v) { if (v == 0 ) { throw Exception("malformed --epsilon, mist be >= 1"); } };
 	auto betaCheck			= [](number v) { if (v < 1) { throw Exception("malformed --beta, must be >= 1"); } };
 	auto bucketsNumberCheck = [](int v) {
@@ -148,6 +149,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("parallel,p", po::value<bool>(&PARALLEL)->default_value(PARALLEL), "if set, will query orams in parallel");
 	desc.add_options()("oramStorage,s", po::value<ORAM_BACKEND>(&ORAM_STORAGE)->default_value(ORAM_STORAGE), "the ORAM backend to use");
 	desc.add_options()("oramsNumber,n", po::value<number>(&ORAMS_NUMBER)->notifier(oramsNumberCheck)->default_value(ORAMS_NUMBER), "the number of parallel ORAMs to use");
+	desc.add_options()("recordSize", po::value<number>(&ORAM_BLOCK_SIZE)->notifier(recordSizeCheck)->default_value(ORAM_BLOCK_SIZE), "the record size in bytes");
 	desc.add_options()("oramsZ,z", po::value<number>(&ORAM_Z)->default_value(ORAM_Z), "the Z parameter for ORAMs");
 	desc.add_options()("bucketsNumber,b", po::value<number>(&DP_BUCKETS)->notifier(bucketsNumberCheck)->default_value(DP_BUCKETS), "the number of buckets for DP (if 0, will choose max buckets such that less than the domain size)");
 	desc.add_options()("useOrams,u", po::value<bool>(&USE_ORAMS)->default_value(USE_ORAMS), "if set will use ORAMs, otherwise each query will download everything every query");
