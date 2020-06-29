@@ -60,7 +60,7 @@ auto USE_ORAMS				  = true;
 auto USE_ORAM_OPTIMIZATION	  = true;
 auto VIRTUAL_REQUESTS		  = false;
 const auto BATCH_SIZE		  = 1000;
-auto SYNTHETIC_QUERIES		  = 20uLL;
+auto QUERIES				  = 20uLL;
 
 vector<string> RPC_HOSTS;
 
@@ -96,7 +96,7 @@ const auto QUERY_INPUT_FILE	 = "query-input";
 vector<string> REDIS_HOSTS;
 auto REDIS_FLUSH_ALL = false;
 
-const auto INPUT_FILES_DIR = string("../../experiments-scripts/scripts/");
+const auto INPUT_FILES_DIR = string("../../experiments-scripts/output/");
 
 auto DUMP_TO_MATTERMOST = true;
 vector<string> logLines;
@@ -165,7 +165,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("useGamma", po::value<bool>(&DP_USE_GAMMA)->default_value(DP_USE_GAMMA), "if set, will use Gamma method to add noise per ORAM");
 	desc.add_options()("levels", po::value<number>(&DP_LEVELS)->default_value(DP_LEVELS), "number of levels to keep in DP tree (0 for choosing optimal for given queries)");
 	desc.add_options()("count", po::value<number>(&COUNT)->default_value(COUNT), "number of synthetic records to generate");
-	desc.add_options()("queries", po::value<number>(&SYNTHETIC_QUERIES)->default_value(SYNTHETIC_QUERIES), "number of synthetic queries to generate");
+	desc.add_options()("queries", po::value<number>(&QUERIES)->default_value(QUERIES), "number of synthetic queries to generate or real queries to read");
 	desc.add_options()("fanout,k", po::value<number>(&DP_K)->default_value(DP_K), "DP tree fanout");
 	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 	desc.add_options()("fileLogging", po::value<bool>(&FILE_LOGGING)->default_value(FILE_LOGGING), "if set, log stream will be duplicated to file (noticeably slows down simulation)");
@@ -327,14 +327,12 @@ int main(int argc, char* argv[])
 			string line = "";
 			while (getline(dataFile, line))
 			{
-				vector<string> record;
-				boost::algorithm::split(record, line, boost::is_any_of(","));
-				auto salary = salaryToNumber(record[7]);
+				auto salary = salaryToNumber(line);
 				MAX_VALUE	= max(salary, MAX_VALUE);
 				MIN_VALUE	= min(salary, MIN_VALUE);
 				if (MAX_VALUE >= ULLONG_MAX / 2)
 				{
-					throw Exception(boost::format("Looks like one of the data points (%1%) is smaller than minus OFFSET (-%2%)") % record[7] % OFFSET);
+					throw Exception(boost::format("Looks like one of the data points (%1%) is smaller than minus OFFSET (-%2%)") % line % OFFSET);
 				}
 
 				LOG(ALL, boost::wformat(L"Salary: %9.2f, data length: %3i") % numberToSalary(salary) % line.size());
@@ -355,7 +353,8 @@ int main(int argc, char* argv[])
 				LOG(CRITICAL, boost::wformat(L"File cannot be opened: %s") % toWString(queryFilePath));
 			}
 
-			line = "";
+			auto readQueriesCount = 0u;
+			line				  = "";
 			while (getline(queryFile, line))
 			{
 				vector<string> query;
@@ -368,6 +367,12 @@ int main(int argc, char* argv[])
 				queries.push_back({left, right});
 
 				MAX_RANGE = max(MAX_RANGE, (right - left) / 100);
+
+				readQueriesCount++;
+				if (readQueriesCount == QUERIES)
+				{
+					break;
+				}
 			}
 			queryFile.close();
 		}
@@ -393,7 +398,7 @@ int main(int argc, char* argv[])
 				treeIndex.push_back({salary, BPlusTree::concatNumbers(2, oramId, blockId)});
 			}
 
-			for (number i = 0; i < SYNTHETIC_QUERIES; i++)
+			for (number i = 0; i < QUERIES; i++)
 			{
 				auto left  = salaryToNumber(to_string(8 * i + 3));
 				auto right = salaryToNumber(to_string(8 * i + 8));
@@ -709,9 +714,7 @@ int main(int argc, char* argv[])
 						oram->get(id, record);
 						auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
 
-						vector<string> broken;
-						boost::algorithm::split(broken, text, boost::is_any_of(","));
-						auto salary = salaryToNumber(broken[7]);
+						auto salary = salaryToNumber(text);
 
 						if (salary >= from && salary <= to)
 						{
@@ -727,9 +730,7 @@ int main(int argc, char* argv[])
 				{
 					auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
 
-					vector<string> broken;
-					boost::algorithm::split(broken, text, boost::is_any_of(","));
-					auto salary = salaryToNumber(broken[7]);
+					auto salary = salaryToNumber(text);
 
 					if (salary >= from && salary <= to)
 					{
@@ -1056,9 +1057,7 @@ int main(int argc, char* argv[])
 						{
 							auto text = PathORAM::toText(record.second, ORAM_BLOCK_SIZE);
 
-							vector<string> broken;
-							boost::algorithm::split(broken, text, boost::is_any_of(","));
-							auto salary = salaryToNumber(broken[7]);
+							auto salary = salaryToNumber(text);
 
 							if (salary >= queryFrom && salary <= queryTo)
 							{

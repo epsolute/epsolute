@@ -50,6 +50,28 @@
 			],
 			"cwd": "${workspaceFolder}/dp-oram/",
 			"preLaunchTask": "build"
+		},
+		{
+			"name": "Main (specific)",
+			"type": "lldb",
+			"request": "launch",
+			"program": "${workspaceFolder}/dp-oram/bin/main",
+			"args": [
+				"--generateIndices",
+				"true",
+				"--readInputs",
+				"true",
+				"--dataset",
+				"dataset-PUMS-nebraska",
+				"--queryset",
+				"queries-PUMS-nebraska-100-follow",
+				"--queries",
+				"25",
+				"-v",
+				"trace"
+			],
+			"cwd": "${workspaceFolder}/dp-oram/",
+			"preLaunchTask": "build"
 		}
 	],
 	"inputs": [

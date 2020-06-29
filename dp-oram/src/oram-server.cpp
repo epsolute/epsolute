@@ -91,9 +91,7 @@ vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, 
 					oram->get(id, record);
 					auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
 
-					vector<string> broken;
-					boost::algorithm::split(broken, text, boost::is_any_of(","));
-					auto salary = salaryToNumber(broken[7]);
+					auto salary = salaryToNumber(text);
 
 					if (salary >= from && salary <= to)
 					{
@@ -108,9 +106,7 @@ vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, 
 				{
 					auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
 
-					vector<string> broken;
-					boost::algorithm::split(broken, text, boost::is_any_of(","));
-					auto salary = salaryToNumber(broken[7]);
+					auto salary = salaryToNumber(text);
 
 					if (salary >= from && salary <= to)
 					{
