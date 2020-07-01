@@ -34,7 +34,7 @@ DEPS = $(patsubst %, $(IDIR)/%, $(_DEPS))
 _OBJ = $(addsuffix .o, $(ENTITIES))
 OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
-TARGETS = main redis-overhead oram-server
+TARGETS = main redis-overhead oram-server query-deducer
 TARGETBIN = $(addprefix $(BDIR)/, $(TARGETS))
 
 TESTS = brc laplace mu padding
@@ -92,6 +92,8 @@ main: LDLIBS += -l rpc
 main: bin/main
 
 redis: bin/redis-overhead
+
+queries: bin/query-deducer
 
 server: LDLIBS += -l rpc
 server: bin/oram-server
