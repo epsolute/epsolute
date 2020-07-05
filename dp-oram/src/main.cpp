@@ -593,7 +593,6 @@ int main(int argc, char* argv[])
 							rpcClients[oramToRpcMap[oramId]]->call("setOram", oramId, REDIS_HOSTS[oramId % REDIS_HOSTS.size()], oramsIndex[oramId], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
 						},
 						i);
-					rpcClients[oramToRpcMap[i]]->call("setOram", i, REDIS_HOSTS[i % REDIS_HOSTS.size()], oramsIndex[i], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
 				}
 
 				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
