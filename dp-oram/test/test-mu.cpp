@@ -32,7 +32,7 @@ namespace DPORAM
 		nodes *= orams;
 
 		auto predicate = [beta, epsilon, levels, nodes](double mu) -> bool {
-			return pow(1 - 0.5 * exp(-(mu * epsilon) / (double)levels), nodes) <= 1 - beta;
+			return pow(1 - 0.5 * exp(-(mu / pow(10, epsilon)) / (double)levels), nodes) <= 1 - beta;
 		};
 
 		auto expected = 0.0;
@@ -47,12 +47,12 @@ namespace DPORAM
 	}
 
 	vector<tuple<double, number, number, number, number, number>> cases = {
-		{0.001, 16, 1000000, 10, ULONG_MAX, 1},
-		{0.0001, 16, 10000000, 100, ULONG_MAX, 1},
+		{0.001, 16, 1000000, 2, ULONG_MAX, 1},
+		{0.0001, 16, 10000000, 3, ULONG_MAX, 1},
 		{1.0 / (1 << 20), 16, 65536, 1, ULONG_MAX, 1},
 		{1.0 / (1 << 20), 16, 1048576, 1, ULONG_MAX, 1},
-		{0.001, 16, 1000000, 10, ULONG_MAX, 64},
-		{0.0001, 16, 10000000, 100, ULONG_MAX, 64},
+		{0.001, 16, 1000000, 2, ULONG_MAX, 64},
+		{0.0001, 16, 10000000, 3, ULONG_MAX, 64},
 		{1.0 / (1 << 20), 16, 65536, 1, ULONG_MAX, 64},
 		{1.0 / (1 << 20), 16, 1048576, 1, ULONG_MAX, 64}};
 

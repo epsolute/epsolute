@@ -66,14 +66,14 @@ vector<string> RPC_HOSTS;
 
 auto READ_INPUTS	  = true;
 auto GENERATE_INDICES = true;
-auto DATASET_TAG	  = string("270K-1.7M-uniform");
-auto QUERYSET_TAG	  = string("270K-1.7M-uniform-500");
+auto DATASET_TAG	  = string("dataset-PUMS-louisiana");
+auto QUERYSET_TAG	  = string("queries-PUMS-louisiana-0.5-uniform");
 
 auto DISABLE_ENCRYPTION = false;
 
 auto DP_K		  = 16uLL;
 auto DP_BETA	  = 10uLL;
-auto DP_EPSILON	  = 10uLL;
+auto DP_EPSILON	  = 1uLL;
 auto DP_BUCKETS	  = 0uLL;
 auto DP_USE_GAMMA = false;
 auto DP_LEVELS	  = 100uLL;
@@ -95,6 +95,8 @@ const auto QUERY_INPUT_FILE	 = "query-input";
 
 vector<string> REDIS_HOSTS;
 auto REDIS_FLUSH_ALL = false;
+
+auto DISABLE_PARALLEL_RPC_LOAD = true;
 
 const auto INPUT_FILES_DIR = string("../../experiments-scripts/output/");
 
@@ -132,7 +134,6 @@ int main(int argc, char* argv[])
 
 	auto oramsNumberCheck	= [](number v) { if (v < 1) { throw Exception("malformed --oramsNumber"); } };
 	auto recordSizeCheck	= [](number v) { if (v < 256uLL) { throw Exception("--recordSize too small"); } };
-	auto epsilonCheck		= [](number v) { if (v == 0 ) { throw Exception("malformed --epsilon, mist be >= 1"); } };
 	auto betaCheck			= [](number v) { if (v < 1) { throw Exception("malformed --beta, must be >= 1"); } };
 	auto bucketsNumberCheck = [](int v) {
 		auto logV = log(v) / log(DP_K);
@@ -161,7 +162,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("profileThreads", po::value<bool>(&PROFILE_THREADS)->default_value(PROFILE_THREADS), "if set, will log additional data on threads performance");
 	desc.add_options()("virtualRequests", po::value<bool>(&VIRTUAL_REQUESTS)->default_value(VIRTUAL_REQUESTS), "if set, will only simulate ORAM queries, not actually make them");
 	desc.add_options()("beta", po::value<number>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP; x such that beta = 2^{-x}");
-	desc.add_options()("epsilon", po::value<number>(&DP_EPSILON)->notifier(epsilonCheck)->default_value(DP_EPSILON), "epsilon parameter for DP");
+	desc.add_options()("epsilon", po::value<number>(&DP_EPSILON)->default_value(DP_EPSILON), "epsilon parameter for DP; x such that epsilon = 10^{-x}");
 	desc.add_options()("useGamma", po::value<bool>(&DP_USE_GAMMA)->default_value(DP_USE_GAMMA), "if set, will use Gamma method to add noise per ORAM");
 	desc.add_options()("levels", po::value<number>(&DP_LEVELS)->default_value(DP_LEVELS), "number of levels to keep in DP tree (0 for choosing optimal for given queries)");
 	desc.add_options()("count", po::value<number>(&COUNT)->default_value(COUNT), "number of synthetic records to generate");
@@ -172,6 +173,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("disableEncryption", po::value<bool>(&DISABLE_ENCRYPTION)->default_value(DISABLE_ENCRYPTION), "if set, will disable encryption in ORAM");
 	desc.add_options()("dumpToMattermost", po::value<bool>(&DUMP_TO_MATTERMOST)->default_value(DUMP_TO_MATTERMOST), "if set, will dump log to mattermost");
 	desc.add_options()("redisFlushAll", po::value<bool>(&REDIS_FLUSH_ALL)->default_value(REDIS_FLUSH_ALL), "if set, will execute FLUSHALL for all supplied redis hosts");
+	desc.add_options()("disableParallelRPCLoad", po::value<bool>(&DISABLE_PARALLEL_RPC_LOAD)->default_value(DISABLE_PARALLEL_RPC_LOAD), "if set, will execute load ORAM RPC calls sequentially");
 	desc.add_options()("redis", po::value<vector<string>>(&REDIS_HOSTS)->multitoken()->composing(), "Redis host(s) to use. If multiple specified, will distribute uniformly. Default tcp://127.0.0.1:6379 .");
 	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randomness)");
 
@@ -573,20 +575,31 @@ int main(int argc, char* argv[])
 
 		if (rpcClients.size() > 0)
 		{
-			thread threads[ORAMS_NUMBER];
-
-			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+			if (DISABLE_PARALLEL_RPC_LOAD)
 			{
-				threads[i] = thread(
-					[&rpcClients, &oramsIndex, &oramToRpcMap](number oramId) -> void {
-						rpcClients[oramToRpcMap[oramId]]->call("setOram", oramId, REDIS_HOSTS[oramId % REDIS_HOSTS.size()], oramsIndex[oramId], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
-					},
-					i);
+				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+				{
+					rpcClients[oramToRpcMap[i]]->call("setOram", i, REDIS_HOSTS[i % REDIS_HOSTS.size()], oramsIndex[i], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
+				}
 			}
-
-			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+			else
 			{
-				threads[i].join();
+				thread threads[ORAMS_NUMBER];
+
+				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+				{
+					threads[i] = thread(
+						[&rpcClients, &oramsIndex, &oramToRpcMap](number oramId) -> void {
+							rpcClients[oramToRpcMap[oramId]]->call("setOram", oramId, REDIS_HOSTS[oramId % REDIS_HOSTS.size()], oramsIndex[oramId], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
+						},
+						i);
+					rpcClients[oramToRpcMap[i]]->call("setOram", i, REDIS_HOSTS[i % REDIS_HOSTS.size()], oramsIndex[i], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
+				}
+
+				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+				{
+					threads[i].join();
+				}
 			}
 		}
 
@@ -647,7 +660,7 @@ int main(int argc, char* argv[])
 			{
 				for (auto j = 0uLL; j < buckets; j++)
 				{
-					noises[i][{l, j}] = (int)sampleLaplace(DP_MU, (double)DP_LEVELS / DP_EPSILON);
+					noises[i][{l, j}] = (int)sampleLaplace(DP_MU, (double)DP_LEVELS * pow(10, DP_EPSILON));
 				}
 				buckets /= DP_K;
 			}

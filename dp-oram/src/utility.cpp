@@ -57,7 +57,7 @@ namespace DPORAM
 		}
 		nodes *= orams;
 
-		auto mu = (number)ceil(-(double)levels * log(2 - 2 * pow(1 - beta, 1.0 / nodes)) / epsilon);
+		auto mu = (number)ceil(-(double)levels * log(2 - 2 * pow(1 - beta, 1.0 / nodes)) * pow(10, epsilon));
 
 		return mu;
 	}
