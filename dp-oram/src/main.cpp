@@ -1027,10 +1027,10 @@ int main(int argc, char* argv[])
 					storage = make_shared<PathORAM::InMemoryStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, 1, BATCH_SIZE);
 					break;
 				case FileSystem:
-					storage = make_shared<PathORAM::FileSystemStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, filename(ORAM_STORAGE_FILE, i), GENERATE_INDICES, 1, BATCH_SIZE);
+					storage = make_shared<PathORAM::FileSystemStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, filename(ORAM_STORAGE_FILE, i), false, 1, BATCH_SIZE);
 					break;
 				case Redis:
-					storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(REDIS_HOSTS[i % REDIS_HOSTS.size()], i), GENERATE_INDICES, 1, BATCH_SIZE);
+					storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(REDIS_HOSTS[i % REDIS_HOSTS.size()], i), false, 1, BATCH_SIZE);
 					break;
 			}
 			storages[i] = storage;
