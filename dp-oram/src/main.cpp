@@ -1136,9 +1136,14 @@ int main(int argc, char* argv[])
 
 	LOG(INFO, L"Complete!");
 
+	auto ingress = 0uLL;
+	auto egress	 = 0uLL;
+
 	for (auto&& rpcClient : rpcClients)
 	{
-		rpcClient->call("reset");
+		auto [rIngress, rEgress] = rpcClient->call("reset").as<pair<number, number>>();
+		ingress += rIngress;
+		egress += rEgress;
 	}
 
 	auto avg = [&measurements](function<number(const measurement&)> getter) -> pair<number, number> {
@@ -1157,6 +1162,7 @@ int main(int argc, char* argv[])
 #pragma region WRITE_JSON
 
 	LOG(INFO, boost::wformat(L"For %1% queries: total: %2%, average: %3% / query, fastest thread: %4% / query, %5% / fetched item; (%6%+%7%+%8%=%9%) records / query") % (queryIndex - 1) % timeToString(timeTotal) % timeToString(timePerQuery) % timeToString(fastestThreadPerQuery) % timeToString(timeTotal / totalTotal) % realPerQuery % paddingPerQuery % noisePerQuery % totalPerQuery);
+	LOG(INFO, boost::wformat(L"For %1% queries: ingress traffic: %2% (%3% / query), egress traffic: %4% (%5% per query)") % (queryIndex - 1) % bytesToString(ingress) % bytesToString(ingress / (queryIndex - 1)) % bytesToString(egress) % bytesToString(egress / (queryIndex - 1)));
 	if (PROFILE_STORAGE_REQUESTS)
 	{
 		printProfileStats(allProfiles, queryIndex - 1);

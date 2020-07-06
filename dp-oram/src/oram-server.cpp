@@ -18,15 +18,18 @@ auto ORAM_BLOCK_SIZE	   = 256uLL;
 number PORT				   = RPC_PORT;
 auto USE_ORAM_OPTIMIZATION = true;
 
-mutex orams_mutex;
+mutex oramsMutex;
+mutex profileMutex;
+
 vector<pair<number, shared_ptr<PathORAM::ORAM>>> orams;
+number ingress, egress;
 
 // returns tuple<real records, thread overhead, # of processed requests>
 using queryReturnType = tuple<vector<bytes>, chrono::steady_clock::rep, number>;
 
 void setOram(number oramNumber, string redisHost, vector<pair<number, bytes>> indices, number logCapacity, number blockSize, number z);
 vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, pair<number, number> query);
-void reset();
+pair<number, number> reset();
 
 int main(int argc, char* argv[])
 {
@@ -56,10 +59,18 @@ int main(int argc, char* argv[])
 	return 0;
 }
 
-void reset()
+pair<number, number> reset()
 {
 	orams.clear();
 	cout << "reset: done" << endl;
+
+	auto rIngress = ingress;
+	auto rEgress  = egress;
+
+	ingress = 0uLL;
+	egress	= 0uLL;
+
+	return {rIngress, rEgress};
 }
 
 vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, pair<number, number> query)
@@ -159,19 +170,33 @@ void setOram(number oramNumber, string redisHost, vector<pair<number, bytes>> in
 
 	cout << "setOram: ID " << oramNumber << ", redis: " << redisHost << ", indices length " << indices.size() << ", logCapacity=" << logCapacity << ", blockSize=" << blockSize << ", z=" << z << endl;
 
-	auto oram = make_shared<PathORAM::ORAM>(
-		logCapacity,
-		blockSize,
-		z,
-		make_shared<PathORAM::RedisStorageAdapter>((1 << logCapacity) + z, ORAM_BLOCK_SIZE, PathORAM::getRandomBlock(KEYSIZE), redishost(redisHost, oramNumber), true, z),
-		make_shared<PathORAM::InMemoryPositionMapAdapter>(((1 << logCapacity) * z) + z),
-		make_shared<PathORAM::InMemoryStashAdapter>(3 * logCapacity * z),
-		true,
-		ULONG_MAX);
+	auto storage = make_shared<PathORAM::RedisStorageAdapter>((1 << logCapacity) + z, ORAM_BLOCK_SIZE, PathORAM::getRandomBlock(KEYSIZE), redishost(redisHost, oramNumber), true, z);
+	auto oram	 = make_shared<PathORAM::ORAM>(
+		   logCapacity,
+		   blockSize,
+		   z,
+		   storage,
+		   make_shared<PathORAM::InMemoryPositionMapAdapter>(((1 << logCapacity) * z) + z),
+		   make_shared<PathORAM::InMemoryStashAdapter>(3 * logCapacity * z),
+		   true,
+		   ULONG_MAX);
 
 	oram->load(indices);
 
-	lock_guard<mutex> guard(orams_mutex);
+	storage->subscribe([](bool read, number batch, number size, number overhead) -> void {
+		lock_guard<mutex> guard(profileMutex);
+
+		if (read)
+		{
+			ingress += size;
+		}
+		else
+		{
+			egress += size;
+		}
+	});
+
+	lock_guard<mutex> guard(oramsMutex);
 
 	orams.push_back({oramNumber, oram});
 
