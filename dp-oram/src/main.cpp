@@ -1162,7 +1162,7 @@ int main(int argc, char* argv[])
 #pragma region WRITE_JSON
 
 	LOG(INFO, boost::wformat(L"For %1% queries: total: %2%, average: %3% / query, fastest thread: %4% / query, %5% / fetched item; (%6%+%7%+%8%=%9%) records / query") % (queryIndex - 1) % timeToString(timeTotal) % timeToString(timePerQuery) % timeToString(fastestThreadPerQuery) % timeToString(timeTotal / totalTotal) % realPerQuery % paddingPerQuery % noisePerQuery % totalPerQuery);
-	LOG(INFO, boost::wformat(L"For %1% queries: ingress traffic: %2% (%3% / query), egress traffic: %4% (%5% per query), network usage per query: %6%, or %3i% of DB size") % (queryIndex - 1) % bytesToString(ingress) % bytesToString(ingress / (queryIndex - 1)) % bytesToString(egress) % bytesToString(egress / (queryIndex - 1)) % bytesToString((ingress + egress) / (queryIndex - 1)) % (100 * (ingress + egress) / (COUNT * ORAM_BLOCK_SIZE)));
+	LOG(INFO, boost::wformat(L"For %1% queries: ingress traffic: %2% (%3% / query), egress traffic: %4% (%5% per query), network usage per query: %6%, or %7%%% of DB size") % (queryIndex - 1) % bytesToString(ingress) % bytesToString(ingress / (queryIndex - 1)) % bytesToString(egress) % bytesToString(egress / (queryIndex - 1)) % bytesToString((ingress + egress) / (queryIndex - 1)) % (100 * (ingress + egress) / (COUNT * ORAM_BLOCK_SIZE)));
 	if (PROFILE_STORAGE_REQUESTS)
 	{
 		printProfileStats(allProfiles, queryIndex - 1);
@@ -1420,7 +1420,7 @@ void dumpToMattermost(int argc, char* argv[])
 				lines++;
 				ss << line << endl;
 
-				if (count >= 16383 - 256 || lines == logLines.size() - 1)
+				if (count >= 16383 - 512 || lines == logLines.size() - 1)
 				{
 					auto partString = (lines == logLines.size() - 1) && part == 1 ? "" : boost::str(boost::format("**PART %i**\n") % part);
 
