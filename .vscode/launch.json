@@ -72,6 +72,24 @@
 			],
 			"cwd": "${workspaceFolder}/dp-oram/",
 			"preLaunchTask": "build"
+		},
+		{
+			"name": "Strawman (specific)",
+			"type": "lldb",
+			"request": "launch",
+			"program": "${workspaceFolder}/dp-oram/bin/main",
+			"args": [
+				"-g",
+				"true",
+				"-r",
+				"false",
+				"-u",
+				"false",
+				"-v",
+				"trace"
+			],
+			"cwd": "${workspaceFolder}/dp-oram/",
+			"preLaunchTask": "build"
 		}
 	],
 	"inputs": [

@@ -59,7 +59,7 @@ auto PROFILE_THREADS		  = false;
 auto USE_ORAMS				  = true;
 auto USE_ORAM_OPTIMIZATION	  = true;
 auto VIRTUAL_REQUESTS		  = false;
-const auto BATCH_SIZE		  = 1000;
+auto BATCH_SIZE				  = 15000uLL;
 auto QUERIES				  = 20uLL;
 
 vector<string> RPC_HOSTS;
@@ -167,6 +167,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("levels", po::value<number>(&DP_LEVELS)->default_value(DP_LEVELS), "number of levels to keep in DP tree (0 for choosing optimal for given queries)");
 	desc.add_options()("count", po::value<number>(&COUNT)->default_value(COUNT), "number of synthetic records to generate");
 	desc.add_options()("queries", po::value<number>(&QUERIES)->default_value(QUERIES), "number of synthetic queries to generate or real queries to read");
+	desc.add_options()("batch", po::value<number>(&BATCH_SIZE)->default_value(BATCH_SIZE), "batch size to use in storage adapters (does not affect RPCs)"); // TODO PRCs
 	desc.add_options()("fanout,k", po::value<number>(&DP_K)->default_value(DP_K), "DP tree fanout");
 	desc.add_options()("verbosity,v", po::value<LOG_LEVEL>(&__logLevel)->default_value(INFO), "verbosity level to output");
 	desc.add_options()("fileLogging", po::value<bool>(&FILE_LOGGING)->default_value(FILE_LOGGING), "if set, log stream will be duplicated to file (noticeably slows down simulation)");
@@ -201,7 +202,7 @@ int main(int argc, char* argv[])
 
 	if (ORAM_STORAGE == FileSystem && !USE_ORAMS && PARALLEL)
 	{
-		LOG(WARNING, L"Can't use FS strawman storage in parallel. PARALLEL will be set to false.");
+		LOG(WARNING, L"Cannot use FS strawman storage in parallel. PARALLEL will be set to false.");
 		PARALLEL = false;
 	}
 
@@ -1014,70 +1015,67 @@ int main(int argc, char* argv[])
 			storageKey = PathORAM::loadKey(filename(KEY_FILE, -1));
 		}
 
-		shared_ptr<PathORAM::AbsStorageAdapter> storage;
-		switch (ORAM_STORAGE)
+		vector<shared_ptr<PathORAM::AbsStorageAdapter>> storages;
+		storages.resize(ORAMS_NUMBER);
+
+		for (number i = 0; i < ORAMS_NUMBER; i++)
 		{
-			case InMemory:
-				storage = make_shared<PathORAM::InMemoryStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, 1);
-				break;
-			case FileSystem:
-				storage = make_shared<PathORAM::FileSystemStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, filename(ORAM_STORAGE_FILE, -1), false, 1);
-				break;
-			case Redis:
-				storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(REDIS_HOSTS[0], -1), false, 1);
-				break;
+			shared_ptr<PathORAM::AbsStorageAdapter> storage;
+			switch (ORAM_STORAGE)
+			{
+				case InMemory:
+					storage = make_shared<PathORAM::InMemoryStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, 1, BATCH_SIZE);
+					break;
+				case FileSystem:
+					storage = make_shared<PathORAM::FileSystemStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, filename(ORAM_STORAGE_FILE, i), GENERATE_INDICES, 1, BATCH_SIZE);
+					break;
+				case Redis:
+					storage = make_shared<PathORAM::RedisStorageAdapter>(COUNT, ORAM_BLOCK_SIZE, storageKey, redishost(REDIS_HOSTS[i % REDIS_HOSTS.size()], i), GENERATE_INDICES, 1, BATCH_SIZE);
+					break;
+			}
+			storages[i] = storage;
 		}
 
 		if (GENERATE_INDICES)
 		{
 			LOG(INFO, L"Uploading strawman dataset");
 
-			vector<pair<const number, vector<pair<number, bytes>>>> batch;
-			auto count = 0;
 			for (number i = 0; i < ORAMS_NUMBER; i++)
 			{
+				vector<pair<const number, PathORAM::bucket>> input;
+				input.reserve(oramsIndex[i].size());
+
 				for (number j = 0; j < oramsIndex[i].size(); j++)
 				{
-					batch.push_back({count, {oramsIndex[i][j]}});
-					count++;
-					if (j % BATCH_SIZE == 0 || j == oramsIndex[i].size() - 1)
-					{
-						if (batch.size() > 0)
-						{
-							storage->set(batch);
-						}
-						batch.clear();
-					}
+					input.push_back({j, vector<PathORAM::block>{oramsIndex[i][j]}});
 				}
+
+				storages[i]->set(boost::make_iterator_range(input.begin(), input.end()));
 			}
 		}
 
-		auto storageQuery = [storage](number indexFrom, number indexTo, number queryFrom, number queryTo, promise<vector<string>>* promise) -> vector<string> {
+		auto storageQuery = [&storages](number queryFrom, number queryTo, number storageId, number size, promise<vector<string>>* promise) -> vector<string> {
 			vector<string> answer;
 
-			vector<number> batch;
-			for (auto i = indexFrom; i < indexTo; i++)
+			vector<PathORAM::block> returned;
+
+			vector<number> locations;
+			locations.resize(size);
+			for (number i = 0; i < size; i++)
 			{
-				batch.push_back(i);
-				if (i % BATCH_SIZE == 0 || i == indexTo - 1)
+				locations[i] = i;
+			}
+
+			storages[storageId]->get(locations, returned);
+			for (auto record : returned)
+			{
+				auto text = PathORAM::toText(record.second, ORAM_BLOCK_SIZE);
+
+				auto salary = salaryToNumber(text);
+
+				if (salary >= queryFrom && salary <= queryTo)
 				{
-					if (batch.size() > 0)
-					{
-						vector<PathORAM::block> returned;
-						storage->get(batch, returned);
-						for (auto record : returned)
-						{
-							auto text = PathORAM::toText(record.second, ORAM_BLOCK_SIZE);
-
-							auto salary = salaryToNumber(text);
-
-							if (salary >= queryFrom && salary <= queryTo)
-							{
-								answer.push_back(text);
-							}
-						}
-						batch.clear();
-					}
+					answer.push_back(text);
 				}
 			}
 
@@ -1105,7 +1103,7 @@ int main(int argc, char* argv[])
 				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 				{
 					futures[i] = promises[i].get_future();
-					threads[i] = thread(storageQuery, i * COUNT / ORAMS_NUMBER, (i + 1) * COUNT / ORAMS_NUMBER, query.first, query.second, &promises[i]);
+					threads[i] = thread(storageQuery, query.first, query.second, i, oramsIndex[i].size(), &promises[i]);
 				}
 
 				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
@@ -1119,7 +1117,7 @@ int main(int argc, char* argv[])
 			{
 				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 				{
-					auto result = storageQuery(i * COUNT / ORAMS_NUMBER, (i + 1) * COUNT / ORAMS_NUMBER, query.first, query.second, NULL);
+					auto result = storageQuery(query.first, query.second, i, oramsIndex[i].size(), NULL);
 					count += result.size();
 				}
 			}
@@ -1162,7 +1160,7 @@ int main(int argc, char* argv[])
 #pragma region WRITE_JSON
 
 	LOG(INFO, boost::wformat(L"For %1% queries: total: %2%, average: %3% / query, fastest thread: %4% / query, %5% / fetched item; (%6%+%7%+%8%=%9%) records / query") % (queryIndex - 1) % timeToString(timeTotal) % timeToString(timePerQuery) % timeToString(fastestThreadPerQuery) % timeToString(timeTotal / totalTotal) % realPerQuery % paddingPerQuery % noisePerQuery % totalPerQuery);
-	LOG(INFO, boost::wformat(L"For %1% queries: ingress traffic: %2% (%3% / query), egress traffic: %4% (%5% per query), network usage per query: %6%, or %7%%% of DB size") % (queryIndex - 1) % bytesToString(ingress) % bytesToString(ingress / (queryIndex - 1)) % bytesToString(egress) % bytesToString(egress / (queryIndex - 1)) % bytesToString((ingress + egress) / (queryIndex - 1)) % (100 * (ingress + egress) / (COUNT * ORAM_BLOCK_SIZE)));
+	LOG(INFO, boost::wformat(L"For %1% queries: ingress: %2% (%3% / query), egress: %4% (%5% / query), network usage / query: %6%, or %7%%% of DB") % (queryIndex - 1) % bytesToString(ingress) % bytesToString(ingress / (queryIndex - 1)) % bytesToString(egress) % bytesToString(egress / (queryIndex - 1)) % bytesToString((ingress + egress) / (queryIndex - 1)) % (100 * (ingress + egress) / (COUNT * ORAM_BLOCK_SIZE)));
 	if (PROFILE_STORAGE_REQUESTS)
 	{
 		printProfileStats(allProfiles, queryIndex - 1);
