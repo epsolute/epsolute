@@ -456,9 +456,16 @@ int main(int argc, char* argv[])
 	LOG(INFO, boost::wformat(L"QUERYSET_TAG = %1%") % toWString(QUERYSET_TAG));
 
 	LOG(INFO, boost::wformat(L"ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
-	for (auto&& redisHost : REDIS_HOSTS)
+	if (REDIS_HOSTS.size() <= 4)
 	{
-		LOG_PARAMETER(toWString(redisHost));
+		for (auto&& redisHost : REDIS_HOSTS)
+		{
+			LOG_PARAMETER(toWString(redisHost));
+		}
+	}
+	else
+	{
+		LOG(INFO, boost::wformat(L"%1% Redis hosts: [%2%, ... , %3%]") % REDIS_HOSTS.size() % toWString(REDIS_HOSTS[0]) % toWString(REDIS_HOSTS[REDIS_HOSTS.size() - 1]));
 	}
 
 #pragma endregion
