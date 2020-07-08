@@ -96,7 +96,7 @@ const auto QUERY_INPUT_FILE	 = "query-input";
 vector<string> REDIS_HOSTS;
 auto REDIS_FLUSH_ALL = false;
 
-auto DISABLE_PARALLEL_RPC_LOAD = true;
+auto DISABLE_PARALLEL_RPC_LOAD = false;
 
 const auto INPUT_FILES_DIR = string("../../experiments-scripts/output/");
 
