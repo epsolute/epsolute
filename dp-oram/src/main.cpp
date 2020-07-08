@@ -73,7 +73,7 @@ auto DISABLE_ENCRYPTION = false;
 
 auto DP_K		  = 16uLL;
 auto DP_BETA	  = 10uLL;
-auto DP_EPSILON	  = 1uLL;
+double DP_EPSILON = 0.69;
 auto DP_BUCKETS	  = 0uLL;
 auto DP_USE_GAMMA = false;
 auto DP_LEVELS	  = 100uLL;
@@ -162,7 +162,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("profileThreads", po::value<bool>(&PROFILE_THREADS)->default_value(PROFILE_THREADS), "if set, will log additional data on threads performance");
 	desc.add_options()("virtualRequests", po::value<bool>(&VIRTUAL_REQUESTS)->default_value(VIRTUAL_REQUESTS), "if set, will only simulate ORAM queries, not actually make them");
 	desc.add_options()("beta", po::value<number>(&DP_BETA)->notifier(betaCheck)->default_value(DP_BETA), "beta parameter for DP; x such that beta = 2^{-x}");
-	desc.add_options()("epsilon", po::value<number>(&DP_EPSILON)->default_value(DP_EPSILON), "epsilon parameter for DP; x such that epsilon = 10^{-x}");
+	desc.add_options()("epsilon", po::value<double>(&DP_EPSILON)->default_value(DP_EPSILON), "epsilon parameter for DP");
 	desc.add_options()("useGamma", po::value<bool>(&DP_USE_GAMMA)->default_value(DP_USE_GAMMA), "if set, will use Gamma method to add noise per ORAM");
 	desc.add_options()("levels", po::value<number>(&DP_LEVELS)->default_value(DP_LEVELS), "number of levels to keep in DP tree (0 for choosing optimal for given queries)");
 	desc.add_options()("count", po::value<number>(&COUNT)->default_value(COUNT), "number of synthetic records to generate");
@@ -660,7 +660,7 @@ int main(int argc, char* argv[])
 			{
 				for (auto j = 0uLL; j < buckets; j++)
 				{
-					noises[i][{l, j}] = (int)sampleLaplace(DP_MU, (double)DP_LEVELS * pow(10, DP_EPSILON));
+					noises[i][{l, j}] = (int)sampleLaplace(DP_MU, DP_LEVELS / DP_EPSILON);
 				}
 				buckets /= DP_K;
 			}

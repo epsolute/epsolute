@@ -46,7 +46,7 @@ namespace DPORAM
 		return {fromBucket, toBucket, fromBucket * step + min, (toBucket + 1) * step + min};
 	}
 
-	number optimalMu(double beta, number k, number N, number epsilon, number levels, number orams)
+	number optimalMu(double beta, number k, number N, double epsilon, number levels, number orams)
 	{
 		auto nodes	 = 0uLL;
 		auto atLevel = (number)(log(N) / log(k));
@@ -57,7 +57,7 @@ namespace DPORAM
 		}
 		nodes *= orams;
 
-		auto mu = (number)ceil(-(double)levels * log(2 - 2 * pow(1 - beta, 1.0 / nodes)) * pow(10, epsilon));
+		auto mu = (number)ceil(-(double)levels * log(2 - 2 * pow(1 - beta, 1.0 / nodes)) / epsilon);
 
 		return mu;
 	}
