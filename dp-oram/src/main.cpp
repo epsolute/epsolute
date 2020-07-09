@@ -96,7 +96,7 @@ const auto QUERY_INPUT_FILE	 = "query-input";
 vector<string> REDIS_HOSTS;
 auto REDIS_FLUSH_ALL = false;
 
-auto DISABLE_PARALLEL_RPC_LOAD = false;
+auto PARALLEL_RPC_LOAD = 100uLL;
 
 const auto INPUT_FILES_DIR = string("../../experiments-scripts/output/");
 
@@ -174,7 +174,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("disableEncryption", po::value<bool>(&DISABLE_ENCRYPTION)->default_value(DISABLE_ENCRYPTION), "if set, will disable encryption in ORAM");
 	desc.add_options()("dumpToMattermost", po::value<bool>(&DUMP_TO_MATTERMOST)->default_value(DUMP_TO_MATTERMOST), "if set, will dump log to mattermost");
 	desc.add_options()("redisFlushAll", po::value<bool>(&REDIS_FLUSH_ALL)->default_value(REDIS_FLUSH_ALL), "if set, will execute FLUSHALL for all supplied redis hosts");
-	desc.add_options()("disableParallelRPCLoad", po::value<bool>(&DISABLE_PARALLEL_RPC_LOAD)->default_value(DISABLE_PARALLEL_RPC_LOAD), "if set, will execute load ORAM RPC calls sequentially");
+	desc.add_options()("parallelRPCLoad", po::value<number>(&PARALLEL_RPC_LOAD)->default_value(PARALLEL_RPC_LOAD), "the maximum number of parallel load ORAM RPC calls");
 	desc.add_options()("redis", po::value<vector<string>>(&REDIS_HOSTS)->multitoken()->composing(), "Redis host(s) to use. If multiple specified, will distribute uniformly. Default tcp://127.0.0.1:6379 .");
 	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randomness)");
 
@@ -583,29 +583,25 @@ int main(int argc, char* argv[])
 
 		if (rpcClients.size() > 0)
 		{
-			if (DISABLE_PARALLEL_RPC_LOAD)
-			{
-				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
-				{
-					rpcClients[oramToRpcMap[i]]->call("setOram", i, REDIS_HOSTS[i % REDIS_HOSTS.size()], oramsIndex[i], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
-				}
-			}
-			else
-			{
-				thread threads[ORAMS_NUMBER];
+			thread threads[ORAMS_NUMBER];
+			vector<number> activeThreads;
 
-				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
-				{
-					threads[i] = thread(
-						[&rpcClients, &oramsIndex, &oramToRpcMap](number oramId) -> void {
-							rpcClients[oramToRpcMap[oramId]]->call("setOram", oramId, REDIS_HOSTS[oramId % REDIS_HOSTS.size()], oramsIndex[oramId], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
-						},
-						i);
-				}
+			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+			{
+				threads[i] = thread(
+					[&rpcClients, &oramsIndex, &oramToRpcMap](number oramId) -> void {
+						rpcClients[oramToRpcMap[oramId]]->call("setOram", oramId, REDIS_HOSTS[oramId % REDIS_HOSTS.size()], oramsIndex[oramId], ORAM_LOG_CAPACITY, ORAM_BLOCK_SIZE, ORAM_Z);
+					},
+					i);
+				activeThreads.push_back(i);
 
-				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+				if (activeThreads.size() == PARALLEL_RPC_LOAD || i == ORAMS_NUMBER - 1)
 				{
-					threads[i].join();
+					for (auto&& i : activeThreads)
+					{
+						threads[i].join();
+					}
+					activeThreads.clear();
 				}
 			}
 		}
