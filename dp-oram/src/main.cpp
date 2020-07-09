@@ -47,7 +47,7 @@ void LOG(LOG_LEVEL level, boost::wformat message);
 #pragma region GLOBALS
 
 auto COUNT					  = 1000uLL;
-auto ORAM_BLOCK_SIZE		  = 256uLL;
+auto ORAM_BLOCK_SIZE		  = 4096uLL;
 auto ORAM_LOG_CAPACITY		  = 10uLL;
 auto ORAMS_NUMBER			  = 1uLL;
 auto PARALLEL				  = true;
@@ -72,10 +72,10 @@ auto QUERYSET_TAG	  = string("queries-PUMS-louisiana-0.5-uniform");
 auto DISABLE_ENCRYPTION = false;
 
 auto DP_K		  = 16uLL;
-auto DP_BETA	  = 10uLL;
-double DP_EPSILON = 0.69;
+auto DP_BETA	  = 20uLL;
+double DP_EPSILON = 0.693;
 auto DP_BUCKETS	  = 0uLL;
-auto DP_USE_GAMMA = false;
+auto DP_USE_GAMMA = true;
 auto DP_LEVELS	  = 100uLL;
 
 auto SEED = 1305;
@@ -1157,12 +1157,12 @@ int main(int argc, char* argv[])
 		return {sum, sum / values.size()};
 	};
 
-	auto [timeTotal, timePerQuery]	 = avg([](measurement v) { return get<0>(v); });
-	auto fastestThreadPerQuery		 = avg([](measurement v) { return get<1>(v); }).second;
-	auto [realTotal, realPerQuery]	 = avg([](measurement v) { return get<2>(v); });
-	auto paddingPerQuery			 = avg([](measurement v) { return get<3>(v); }).second;
-	auto noisePerQuery				 = avg([](measurement v) { return get<4>(v); }).second;
-	auto [totalTotal, totalPerQuery] = avg([](measurement v) { return get<5>(v); });
+	auto [timeTotal, timePerQuery] = avg([](measurement v) { return get<0>(v); });
+	auto fastestThreadPerQuery	   = avg([](measurement v) { return get<1>(v); }).second;
+	auto [realTotal, realPerQuery] = avg([](measurement v) { return get<2>(v); });
+	auto paddingPerQuery		   = avg([](measurement v) { return get<3>(v); }).second;
+	auto noisePerQuery			   = avg([](measurement v) { return get<4>(v); }).second;
+	auto totalPerQuery			   = avg([](measurement v) { return get<5>(v); }).second;
 
 #pragma region WRITE_JSON
 
