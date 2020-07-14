@@ -609,6 +609,17 @@ int main(int argc, char* argv[])
 		auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), GENERATE_INDICES);
 		auto tree		 = GENERATE_INDICES ? make_shared<BPlusTree::Tree>(treeStorage, treeIndex) : make_shared<BPlusTree::Tree>(treeStorage);
 
+		{
+			auto treeSize		 = treeStorage->size();
+			auto storageSize	 = ORAM_Z * ((1 << ORAM_LOG_CAPACITY) + ORAM_Z) * (ORAM_BLOCK_SIZE + 2 * 16);
+			auto positionMapSize = (((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z) * sizeof(number);
+			auto stashSize		 = (3 * ORAM_LOG_CAPACITY * ORAM_Z) * ORAM_BLOCK_SIZE;
+
+			LOG(INFO, boost::wformat(L"B+ tree size: %s") % bytesToString(treeSize));
+			LOG(INFO, boost::wformat(L"ORAMs size: %s (each of %i ORAMs occupies %s for position map and %s for stash)") % bytesToString(ORAMS_NUMBER * (positionMapSize + stashSize)) % ORAMS_NUMBER % bytesToString(positionMapSize) % bytesToString(stashSize));
+			LOG(INFO, boost::wformat(L"Remote storage size: %s (each of %i ORAMs occupies %s for storage)") % bytesToString(storageSize * ORAMS_NUMBER) % ORAMS_NUMBER % bytesToString(storageSize));
+		}
+
 		auto orams = transform<ORAMSet, shared_ptr<PathORAM::ORAM>>(oramSets, [](ORAMSet val) { return get<3>(val); });
 
 #pragma endregion
