@@ -48,3 +48,14 @@ make clean && make shared -j8
 cd ~/dp-oram/dp-oram/
 make clean copy-libs-dev && sudo make ldconfig && make main redis server -j8
 ```
+
+To install ORAM service
+
+```sh
+cd experiments-scripts/configs/
+git pull
+sudo ln -s /home/dmytro/experiments-scripts/configs/oram.service /lib/systemd/system/oram.service
+sudo systemctl enable oram.service
+sudo systemctl start oram.service
+sudo systemctl status oram.service
+```
