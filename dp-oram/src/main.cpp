@@ -96,6 +96,8 @@ const auto QUERY_INPUT_FILE	 = "query-input";
 vector<string> REDIS_HOSTS;
 auto REDIS_FLUSH_ALL = false;
 
+auto POINT_QUERIES = false;
+
 auto PARALLEL_RPC_LOAD = 100uLL;
 
 const auto INPUT_FILES_DIR = string("../../experiments-scripts/output/");
@@ -174,6 +176,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("disableEncryption", po::value<bool>(&DISABLE_ENCRYPTION)->default_value(DISABLE_ENCRYPTION), "if set, will disable encryption in ORAM");
 	desc.add_options()("dumpToMattermost", po::value<bool>(&DUMP_TO_MATTERMOST)->default_value(DUMP_TO_MATTERMOST), "if set, will dump log to mattermost");
 	desc.add_options()("redisFlushAll", po::value<bool>(&REDIS_FLUSH_ALL)->default_value(REDIS_FLUSH_ALL), "if set, will execute FLUSHALL for all supplied redis hosts");
+	desc.add_options()("pointQueries", po::value<bool>(&POINT_QUERIES)->default_value(POINT_QUERIES), "if set, will run point queries (against left endpoint) instead of range queries");
 	desc.add_options()("parallelRPCLoad", po::value<number>(&PARALLEL_RPC_LOAD)->default_value(PARALLEL_RPC_LOAD), "the maximum number of parallel load ORAM RPC calls");
 	desc.add_options()("redis", po::value<vector<string>>(&REDIS_HOSTS)->multitoken()->composing(), "Redis host(s) to use. If multiple specified, will distribute uniformly. Default tcp://127.0.0.1:6379 .");
 	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randomness)");
@@ -240,6 +243,12 @@ int main(int argc, char* argv[])
 	{
 		LOG(WARNING, L"RPC does not work with profiling. PROFILE_STORAGE_REQUESTS will be set to false.");
 		PROFILE_STORAGE_REQUESTS = false;
+	}
+
+	if (POINT_QUERIES)
+	{
+		LOG(WARNING, L"In point queries mode, DP tree becomes DP list. Setting DP_LEVELS to 1.");
+		DP_LEVELS = 1;
 	}
 
 	if (REDIS_HOSTS.size() == 0)
@@ -418,6 +427,15 @@ int main(int argc, char* argv[])
 		oramBlockNumbers.clear();
 		loadInputs(queries, oramBlockNumbers);
 	}
+
+	if (POINT_QUERIES)
+	{
+		for (auto &&query : queries)
+		{
+			query.second = query.first;
+		}
+	}
+
 
 	COUNT = accumulate(oramBlockNumbers.begin(), oramBlockNumbers.end(), 0uLL);
 
