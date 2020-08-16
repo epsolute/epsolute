@@ -430,12 +430,11 @@ int main(int argc, char* argv[])
 
 	if (POINT_QUERIES)
 	{
-		for (auto &&query : queries)
+		for (auto&& query : queries)
 		{
 			query.second = query.first;
 		}
 	}
-
 
 	COUNT = accumulate(oramBlockNumbers.begin(), oramBlockNumbers.end(), 0uLL);
 
@@ -1179,7 +1178,7 @@ int main(int argc, char* argv[])
 	auto avg = [&measurements](function<number(const measurement&)> getter) -> pair<number, number> {
 		auto values = transform<measurement, number>(measurements, getter);
 		auto sum	= accumulate(values.begin(), values.end(), 0LL);
-		return {sum, sum / values.size()};
+		return {sum, values.size() > 0 ? sum / values.size() : 0};
 	};
 
 	auto [timeTotal, timePerQuery] = avg([](measurement v) { return get<0>(v); });
