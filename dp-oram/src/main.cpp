@@ -1190,7 +1190,7 @@ int main(int argc, char* argv[])
 
 #pragma region WRITE_JSON
 
-	LOG(INFO, boost::wformat(L"For %1% queries: total: %2%, average: %3% / query, fastest thread: %4% / query, %5% / fetched item; (%6%+%7%+%8%=%9%) records / query") % (queryIndex - 1) % timeToString(timeTotal) % timeToString(timePerQuery) % timeToString(fastestThreadPerQuery) % timeToString(timeTotal / realTotal) % realPerQuery % paddingPerQuery % noisePerQuery % totalPerQuery);
+	LOG(INFO, boost::wformat(L"For %1% queries: total: %2%, average: %3% / query, fastest thread: %4% / query, %5% / fetched item; (%6%+%7%+%8%=%9%) records / query") % (queryIndex - 1) % timeToString(timeTotal) % timeToString(timePerQuery) % timeToString(fastestThreadPerQuery) % timeToString(realTotal > 0 ? timeTotal / realTotal : 0) % realPerQuery % paddingPerQuery % noisePerQuery % totalPerQuery);
 	LOG(INFO, boost::wformat(L"For %1% queries: ingress: %2% (%3% / query), egress: %4% (%5% / query), network usage / query: %6%, or %7%%% of DB") % (queryIndex - 1) % bytesToString(ingress) % bytesToString(ingress / (queryIndex - 1)) % bytesToString(egress) % bytesToString(egress / (queryIndex - 1)) % bytesToString((ingress + egress) / (queryIndex - 1)) % (100 * (ingress + egress) / (queryIndex - 1) / (COUNT * ORAM_BLOCK_SIZE)));
 	if (PROFILE_STORAGE_REQUESTS)
 	{
