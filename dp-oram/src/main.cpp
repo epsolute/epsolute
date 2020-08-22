@@ -70,6 +70,7 @@ auto DATASET_TAG	  = string("dataset-PUMS-louisiana");
 auto QUERYSET_TAG	  = string("queries-PUMS-louisiana-0.5-uniform");
 
 auto DISABLE_ENCRYPTION = false;
+auto WAIT_BETWEEN_QUERIES = 0uLL;
 
 auto DP_K		  = 16uLL;
 auto DP_BETA	  = 20uLL;
@@ -177,6 +178,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("dumpToMattermost", po::value<bool>(&DUMP_TO_MATTERMOST)->default_value(DUMP_TO_MATTERMOST), "if set, will dump log to mattermost");
 	desc.add_options()("redisFlushAll", po::value<bool>(&REDIS_FLUSH_ALL)->default_value(REDIS_FLUSH_ALL), "if set, will execute FLUSHALL for all supplied redis hosts");
 	desc.add_options()("pointQueries", po::value<bool>(&POINT_QUERIES)->default_value(POINT_QUERIES), "if set, will run point queries (against left endpoint) instead of range queries");
+	desc.add_options()("wait", po::value<number>(&WAIT_BETWEEN_QUERIES)->default_value(WAIT_BETWEEN_QUERIES), "if set, will wait specified number of milliseconds between queries (not for STRAWMAN)");
 	desc.add_options()("parallelRPCLoad", po::value<number>(&PARALLEL_RPC_LOAD)->default_value(PARALLEL_RPC_LOAD), "the maximum number of parallel load ORAM RPC calls");
 	desc.add_options()("redis", po::value<vector<string>>(&REDIS_HOSTS)->multitoken()->composing(), "Redis host(s) to use. If multiple specified, will distribute uniformly. Default tcp://127.0.0.1:6379 .");
 	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randomness)");
@@ -1012,6 +1014,7 @@ int main(int argc, char* argv[])
 			}
 
 			queryIndex++;
+			usleep(WAIT_BETWEEN_QUERIES*1000);
 
 			if (SIGINT_RECEIVED)
 			{
