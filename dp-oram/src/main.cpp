@@ -820,7 +820,7 @@ int main(int argc, char* argv[])
 			{
 				if (node.first >= DP_LEVELS)
 				{
-					LOG(CRITICAL, boost::wformat(L"DP tree is not high enough. Level %1% is not generated.") % node.first);
+					LOG(CRITICAL, boost::wformat(L"DP tree is not high enough. Level %1% is not generated. Buckets [%2%, %3%], endpoints (%4%, %5%).") % node.first % fromBucket % toBucket % numberToSalary(from) % numberToSalary(to));
 				}
 			}
 
