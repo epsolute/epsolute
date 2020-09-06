@@ -610,6 +610,7 @@ int main(int argc, char* argv[])
 						threads[i].join();
 					}
 					activeThreads.clear();
+					LOG(DEBUG, L"RPC batch loaded");
 				}
 			}
 
