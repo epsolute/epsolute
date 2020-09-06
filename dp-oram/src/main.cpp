@@ -40,6 +40,7 @@ inline void loadInputs(vector<pair<number, number>>& queries, vector<number>& or
 void addFakeRequests(vector<number>& blocks, number maxBlocks, number fakesNumber);
 void printProfileStats(vector<profile>& profiles, number queries = 0);
 void dumpToMattermost(int argc, char* argv[]);
+void setupRPCHosts(vector<unique_ptr<rpc::client>>& rpcClients);
 
 void LOG(LOG_LEVEL level, wstring message);
 void LOG(LOG_LEVEL level, boost::wformat message);
@@ -69,7 +70,7 @@ auto GENERATE_INDICES = true;
 auto DATASET_TAG	  = string("dataset-PUMS-louisiana");
 auto QUERYSET_TAG	  = string("queries-PUMS-louisiana-0.5-uniform");
 
-auto DISABLE_ENCRYPTION = false;
+auto DISABLE_ENCRYPTION	  = false;
 auto WAIT_BETWEEN_QUERIES = 0uLL;
 
 auto DP_K		  = 16uLL;
@@ -269,19 +270,7 @@ int main(int argc, char* argv[])
 
 	vector<unique_ptr<rpc::client>> rpcClients;
 	vector<number> oramToRpcMap;
-	for (auto&& rpcHost : RPC_HOSTS)
-	{
-		if (rpcHost.find(':') != string::npos)
-		{
-			vector<string> pieces;
-			boost::algorithm::split(pieces, rpcHost, boost::is_any_of(":"));
-			rpcClients.push_back(make_unique<rpc::client>(pieces[0], stoi(pieces[1])));
-		}
-		else
-		{
-			rpcClients.push_back(make_unique<rpc::client>(rpcHost, RPC_PORT));
-		}
-	}
+	setupRPCHosts(rpcClients);
 	if (RPC_HOSTS.size() > 0)
 	{
 		for (auto i = 0u; i < ORAMS_NUMBER; i++)
@@ -623,6 +612,8 @@ int main(int argc, char* argv[])
 					activeThreads.clear();
 				}
 			}
+
+			setupRPCHosts(rpcClients);
 		}
 
 		auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), GENERATE_INDICES);
@@ -1014,7 +1005,7 @@ int main(int argc, char* argv[])
 			}
 
 			queryIndex++;
-			usleep(WAIT_BETWEEN_QUERIES*1000);
+			usleep(WAIT_BETWEEN_QUERIES * 1000);
 
 			if (SIGINT_RECEIVED)
 			{
@@ -1468,6 +1459,25 @@ void dumpToMattermost(int argc, char* argv[])
 		else
 		{
 			LOG(ERROR, L"DUMP_TO_MATTERMOST is set to true, but hook is not set in MATTERMOST_HOOK. Will not post to Mattermost.");
+		}
+	}
+}
+
+void setupRPCHosts(vector<unique_ptr<rpc::client>>& rpcClients)
+{
+	rpcClients.clear();
+
+	for (auto&& rpcHost : RPC_HOSTS)
+	{
+		if (rpcHost.find(':') != string::npos)
+		{
+			vector<string> pieces;
+			boost::algorithm::split(pieces, rpcHost, boost::is_any_of(":"));
+			rpcClients.push_back(make_unique<rpc::client>(pieces[0], stoi(pieces[1])));
+		}
+		else
+		{
+			rpcClients.push_back(make_unique<rpc::client>(rpcHost, RPC_PORT));
 		}
 	}
 }
