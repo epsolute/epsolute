@@ -608,7 +608,6 @@ int main(int argc, char* argv[])
 					for (auto&& i : activeThreads)
 					{
 						threads[i].join();
-						LOG(TRACE, boost::wformat(L"Joined thread %i") % i);
 					}
 					activeThreads.clear();
 					LOG(DEBUG, L"RPC batch loaded");
