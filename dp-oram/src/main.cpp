@@ -697,6 +697,14 @@ int main(int argc, char* argv[])
 			}
 		}
 
+		// count number of nodes in DP tree
+		number dpNodes = 0;
+		for (auto&& dpTree : noises)
+		{
+			dpNodes += dpTree.size();
+		}
+		LOG(INFO, boost::wformat(L"DP tree has %1% elements") % dpNodes);
+
 #pragma endregion
 
 #pragma region QUERY
