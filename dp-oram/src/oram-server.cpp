@@ -103,6 +103,7 @@ vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, 
 					auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
 
 					auto salary = salaryToNumber(text);
+					// TODO
 
 					if (salary >= from && salary <= to)
 					{

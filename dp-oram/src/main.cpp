@@ -80,11 +80,17 @@ auto DP_BUCKETS	  = 0uLL;
 auto DP_USE_GAMMA = true;
 auto DP_LEVELS	  = 100uLL;
 
+auto DP_LEVELS2	 = 100uLL;
+auto DP_BUCKETS2 = 0uLL;
+
 auto SEED = 1305;
 
 number MIN_VALUE = ULONG_MAX;
 number MAX_VALUE = 0;
 number MAX_RANGE = 0;
+
+number MIN_VALUE2 = ULONG_MAX;
+number MAX_VALUE2 = 0;
 
 const auto FILES_DIR		 = "./storage-files";
 const auto KEY_FILE			 = "key";
@@ -99,6 +105,9 @@ vector<string> REDIS_HOSTS;
 auto REDIS_FLUSH_ALL = false;
 
 auto POINT_QUERIES = false;
+
+auto TWO_ATTRIBUTES = false;
+auto QUERY_SECOND	= false;
 
 auto PARALLEL_RPC_LOAD = 100uLL;
 
@@ -183,6 +192,8 @@ int main(int argc, char* argv[])
 	desc.add_options()("parallelRPCLoad", po::value<number>(&PARALLEL_RPC_LOAD)->default_value(PARALLEL_RPC_LOAD), "the maximum number of parallel load ORAM RPC calls");
 	desc.add_options()("redis", po::value<vector<string>>(&REDIS_HOSTS)->multitoken()->composing(), "Redis host(s) to use. If multiple specified, will distribute uniformly. Default tcp://127.0.0.1:6379 .");
 	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randomness)");
+	desc.add_options()("two-attributes", po::value<bool>(&TWO_ATTRIBUTES)->default_value(TWO_ATTRIBUTES), "if set, will run two attributes queries");
+	desc.add_options()("query-second", po::value<bool>(&QUERY_SECOND)->default_value(QUERY_SECOND), "if set, will run the queries against the second attribute");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -254,6 +265,30 @@ int main(int argc, char* argv[])
 		DP_LEVELS = 1;
 	}
 
+	if (TWO_ATTRIBUTES && !READ_INPUTS)
+	{
+		LOG(WARNING, L"Generating inputs for two attribute queries is not supported.");
+		READ_INPUTS = true;
+	}
+
+	if (TWO_ATTRIBUTES && !GENERATE_INDICES)
+	{
+		LOG(WARNING, L"Reading inputs from files for two attribute queries is not supported.");
+		GENERATE_INDICES = true;
+	}
+
+	if (TWO_ATTRIBUTES && !USE_ORAMS)
+	{
+		LOG(WARNING, L"Using strawman for two attribute queries is not supported.");
+		USE_ORAMS = true;
+	}
+
+	if (!TWO_ATTRIBUTES && QUERY_SECOND)
+	{
+		LOG(WARNING, L"Cannot have QUERY_SECOND without TWO_ATTRIBUTES.");
+		QUERY_SECOND = false;
+	}
+
 	if (REDIS_HOSTS.size() == 0)
 	{
 		REDIS_HOSTS.push_back("tcp://127.0.0.1:6379");
@@ -314,6 +349,7 @@ int main(int argc, char* argv[])
 
 	// vector<pair<salary, bytes(ORAMid, blockId)>>
 	vector<pair<number, bytes>> treeIndex;
+	vector<pair<number, bytes>> treeIndex2;
 	vector<pair<number, number>> queries;
 
 	if (GENERATE_INDICES)
@@ -330,9 +366,23 @@ int main(int argc, char* argv[])
 			string line = "";
 			while (getline(dataFile, line))
 			{
-				auto salary = salaryToNumber(line);
-				MAX_VALUE	= max(salary, MAX_VALUE);
-				MIN_VALUE	= min(salary, MIN_VALUE);
+				number salary;
+				number salary2;
+
+				if (!TWO_ATTRIBUTES)
+				{
+					salary = salaryToNumber(line);
+				}
+				else
+				{
+					vector<string> salaries;
+					boost::algorithm::split(salaries, line, boost::is_any_of(","));
+					salary	= salaryToNumber(salaries[0]);
+					salary2 = salaryToNumber(salaries[1]);
+				}
+
+				MAX_VALUE = max(salary, MAX_VALUE);
+				MIN_VALUE = min(salary, MIN_VALUE);
 				if (MAX_VALUE >= ULLONG_MAX / 2)
 				{
 					throw Exception(boost::format("Looks like one of the data points (%1%) is smaller than minus OFFSET (-%2%)") % line % OFFSET);
@@ -340,12 +390,28 @@ int main(int argc, char* argv[])
 
 				LOG(ALL, boost::wformat(L"Salary: %9.2f, data length: %3i") % numberToSalary(salary) % line.size());
 
+				if (TWO_ATTRIBUTES)
+				{
+					MAX_VALUE2 = max(salary2, MAX_VALUE2);
+					MIN_VALUE2 = min(salary2, MIN_VALUE2);
+					if (MAX_VALUE2 >= ULLONG_MAX / 2)
+					{
+						throw Exception(boost::format("Looks like one of the data points (%1%) is smaller than minus OFFSET (-%2%)") % line % OFFSET);
+					}
+
+					LOG(ALL, boost::wformat(L"Salary2: %9.2f, data length: %3i") % numberToSalary(salary2) % line.size());
+				}
+
 				auto toHash	 = BPlusTree::bytesFromNumber(salary);
 				auto oramId	 = PathORAM::hashToNumber(toHash, ORAMS_NUMBER);
 				auto blockId = oramsIndex[oramId].size();
 
 				oramsIndex[oramId].push_back({blockId, PathORAM::fromText(line, ORAM_BLOCK_SIZE)});
 				treeIndex.push_back({salary, BPlusTree::concatNumbers(2, oramId, blockId)});
+				if (TWO_ATTRIBUTES)
+				{
+					treeIndex2.push_back({salary2, BPlusTree::concatNumbers(2, oramId, blockId)});
+				}
 			}
 			dataFile.close();
 
@@ -454,6 +520,8 @@ int main(int argc, char* argv[])
 	LOG_PARAMETER(DUMP_TO_MATTERMOST);
 	LOG_PARAMETER(VIRTUAL_REQUESTS);
 	LOG_PARAMETER(BATCH_SIZE);
+	LOG_PARAMETER(TWO_ATTRIBUTES);
+	LOG_PARAMETER(QUERY_SECOND);
 	LOG_PARAMETER(SEED);
 	LOG_PARAMETER(DP_K);
 	LOG_PARAMETER(DP_BETA);
@@ -619,14 +687,31 @@ int main(int argc, char* argv[])
 
 		auto treeStorage = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, -1), GENERATE_INDICES);
 		auto tree		 = GENERATE_INDICES ? make_shared<BPlusTree::Tree>(treeStorage, treeIndex) : make_shared<BPlusTree::Tree>(treeStorage);
+		shared_ptr<BPlusTree::Tree> tree2;
+
+		if (TWO_ATTRIBUTES)
+		{
+			auto treeStorage2 = make_shared<BPlusTree::FileSystemStorageAdapter>(TREE_BLOCK_SIZE, filename(TREE_FILE, 256), true);
+			tree2			  = make_shared<BPlusTree::Tree>(treeStorage2, treeIndex2);
+		}
 
 		{
-			auto treeSize		 = treeStorage->size();
+			// Currently .size() does not return correct size, so we use mathematics
+			// auto treeSize		 = treeStorage->size();
+			auto treeSize = 5.7 * COUNT;
+
 			auto storageSize	 = ORAM_Z * ((1 << ORAM_LOG_CAPACITY) + ORAM_Z) * (ORAM_BLOCK_SIZE + 2 * 16);
 			auto positionMapSize = (((1 << ORAM_LOG_CAPACITY) * ORAM_Z) + ORAM_Z) * sizeof(number);
 			auto stashSize		 = (3 * ORAM_LOG_CAPACITY * ORAM_Z) * ORAM_BLOCK_SIZE;
 
-			LOG(INFO, boost::wformat(L"B+ tree size: %s") % bytesToString(treeSize));
+			if (!TWO_ATTRIBUTES)
+			{
+				LOG(INFO, boost::wformat(L"B+ tree size: %s") % bytesToString(treeSize));
+			}
+			else
+			{
+				LOG(INFO, boost::wformat(L"B+ tree size: %s (%s each of two)") % bytesToString(2 * treeSize) % bytesToString(treeSize));
+			}
 			LOG(INFO, boost::wformat(L"ORAMs size: %s (each of %i ORAMs occupies %s for position map and %s for stash)") % bytesToString(ORAMS_NUMBER * (positionMapSize + stashSize)) % ORAMS_NUMBER % bytesToString(positionMapSize) % bytesToString(stashSize));
 			LOG(INFO, boost::wformat(L"Remote storage size: %s (each of %i ORAMs occupies %s for storage)") % bytesToString(storageSize * ORAMS_NUMBER) % ORAMS_NUMBER % bytesToString(storageSize));
 		}
@@ -664,6 +749,7 @@ int main(int argc, char* argv[])
 		}
 
 		auto DP_MU = optimalMu(1.0 / (1 << DP_BETA), DP_K, DP_BUCKETS, DP_EPSILON, DP_LEVELS, DP_USE_GAMMA ? 1 : ORAMS_NUMBER);
+		number DP_MU2;
 
 		LOG_PARAMETER(DP_DOMAIN);
 		LOG_PARAMETER(numberToSalary(MIN_VALUE));
@@ -673,10 +759,49 @@ int main(int argc, char* argv[])
 		LOG_PARAMETER(DP_LEVELS);
 		LOG_PARAMETER(DP_MU);
 
+		if (TWO_ATTRIBUTES)
+		{
+			auto DP_DOMAIN2 = (MAX_VALUE2 - MIN_VALUE2) / 100;
+			if (DP_BUCKETS2 == 0)
+			{
+				DP_BUCKETS2 = 1;
+				while (DP_BUCKETS2 * DP_K <= DP_DOMAIN2)
+				{
+					DP_BUCKETS2 *= DP_K;
+				}
+			}
+
+			if (DP_LEVELS2 == 0)
+			{
+				auto maxBuckets2 = (MAX_RANGE * DP_BUCKETS2 + DP_DOMAIN2 - 1) / DP_DOMAIN2;
+				DP_LEVELS2		 = max((number)ceil(log(maxBuckets2) / log(DP_K)), 1uLL);
+				LOG(INFO, boost::wformat(L"DP_LEVELS2 is optimally set at %1%, given that biggest query will span at most %2% buckets") % DP_LEVELS2 % maxBuckets2);
+			}
+			else
+			{
+				auto maxLevels2 = (number)(log(DP_BUCKETS2) / log(DP_K));
+				if (DP_LEVELS2 > maxLevels2)
+				{
+					DP_LEVELS2 = maxLevels2;
+				}
+			}
+
+			DP_MU2 = optimalMu(1.0 / (1 << DP_BETA), DP_K, DP_BUCKETS2, DP_EPSILON, DP_LEVELS2, DP_USE_GAMMA ? 1 : ORAMS_NUMBER);
+
+			LOG_PARAMETER(DP_DOMAIN2);
+			LOG_PARAMETER(numberToSalary(MIN_VALUE2));
+			LOG_PARAMETER(numberToSalary(MAX_VALUE2));
+			LOG_PARAMETER(MAX_RANGE);
+			LOG_PARAMETER(DP_BUCKETS2);
+			LOG_PARAMETER(DP_LEVELS2);
+			LOG_PARAMETER(DP_MU2);
+		}
+
 		LOG(INFO, L"Generating DP noise tree...");
 
-		vector<map<pair<number, number>, number>> noises;
+		vector<map<pair<number, number>, number>> noises, noises2;
 		noises.resize(ORAMS_NUMBER);
+		noises2.resize(ORAMS_NUMBER);
 
 		for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 		{
@@ -704,6 +829,36 @@ int main(int argc, char* argv[])
 			dpNodes += dpTree.size();
 		}
 		LOG(INFO, boost::wformat(L"DP tree has %1% elements") % dpNodes);
+
+		if (TWO_ATTRIBUTES)
+		{
+			for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
+			{
+				auto buckets2 = DP_BUCKETS2;
+				for (auto l = 0uLL; l < DP_LEVELS2; l++)
+				{
+					for (auto j = 0uLL; j < buckets2; j++)
+					{
+						noises2[i][{l, j}] = (int)sampleLaplace(DP_MU2, DP_LEVELS2 / DP_EPSILON);
+					}
+					buckets2 /= DP_K;
+				}
+
+				if (DP_USE_GAMMA)
+				{
+					// no need for extra noises trees if Gamma is used
+					break;
+				}
+			}
+
+			// count number of nodes in DP tree
+			number dpNodes2 = 0;
+			for (auto&& dpTree2 : noises2)
+			{
+				dpNodes2 += dpTree2.size();
+			}
+			LOG(INFO, boost::wformat(L"DP tree 2 has %1% elements") % dpNodes2);
+		}
 
 #pragma endregion
 
@@ -760,7 +915,17 @@ int main(int argc, char* argv[])
 						oram->get(id, record);
 						auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
 
-						auto salary = salaryToNumber(text);
+						number salary;
+						if (TWO_ATTRIBUTES)
+						{
+							vector<string> salaries;
+							boost::algorithm::split(salaries, text, boost::is_any_of(","));
+							salary = salaryToNumber(salaries[QUERY_SECOND ? 1 : 0]);
+						}
+						else
+						{
+							salary = salaryToNumber(text);
+						}
 
 						if (salary >= from && salary <= to)
 						{
@@ -776,7 +941,17 @@ int main(int argc, char* argv[])
 				{
 					auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
 
-					auto salary = salaryToNumber(text);
+					number salary;
+					if (TWO_ATTRIBUTES)
+					{
+						vector<string> salaries;
+						boost::algorithm::split(salaries, text, boost::is_any_of(","));
+						salary = salaryToNumber(salaries[QUERY_SECOND ? 1 : 0]);
+					}
+					else
+					{
+						salary = salaryToNumber(text);
+					}
 
 					if (salary >= from && salary <= to)
 					{
@@ -809,16 +984,25 @@ int main(int argc, char* argv[])
 			number fastestThread	  = 0;
 
 			// DP padding
-			auto [fromBucket, toBucket, from, to] = padToBuckets(query, MIN_VALUE, MAX_VALUE, DP_BUCKETS);
+			auto [fromBucket, toBucket, from, to] = padToBuckets(
+				query,
+				QUERY_SECOND ? MIN_VALUE2 : MIN_VALUE,
+				QUERY_SECOND ? MAX_VALUE2 : MAX_VALUE,
+				QUERY_SECOND ? DP_BUCKETS2 : DP_BUCKETS);
+
+			if (from < (QUERY_SECOND ? MIN_VALUE2 : MIN_VALUE) || to > (QUERY_SECOND ? MAX_VALUE2 : MAX_VALUE))
+			{
+				LOG(ERROR, L"Query endpoints are out of bounds, did you use correct queryset tag?");
+			}
 
 			vector<bytes> oramsAndBlocks;
-			tree->search(from, to, oramsAndBlocks);
+			(QUERY_SECOND ? tree2 : tree)->search(from, to, oramsAndBlocks);
 
 			// DP add noise
 			auto noiseNodes = BRC(DP_K, fromBucket, toBucket);
 			for (auto node : noiseNodes)
 			{
-				if (node.first >= DP_LEVELS)
+				if (node.first >= (QUERY_SECOND ? DP_LEVELS2 : DP_LEVELS))
 				{
 					LOG(CRITICAL, boost::wformat(L"DP tree is not high enough. Level %1% is not generated. Buckets [%2%, %3%], endpoints (%4%, %5%).") % node.first % fromBucket % toBucket % numberToSalary(from) % numberToSalary(to));
 				}
@@ -842,8 +1026,13 @@ int main(int argc, char* argv[])
 				auto kZeroTilda = oramsAndBlocks.size();
 				for (auto node : noiseNodes)
 				{
-					kZeroTilda += noises[0][node];
+					kZeroTilda += (QUERY_SECOND ? noises2 : noises)[0][node];
 				}
+				if (kZeroTilda == 0)
+				{
+					LOG(CRITICAL, L"Something is wrong, kZeroTilda cannot be 0.");
+				}
+
 				auto maxRecords = gammaNodes(ORAMS_NUMBER, 1.0 / (1 << DP_BETA), kZeroTilda);
 
 				for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
@@ -860,8 +1049,8 @@ int main(int argc, char* argv[])
 				{
 					for (auto node : noiseNodes)
 					{
-						addFakeRequests(blockIds[i], oramBlockNumbers[i], noises[i][node]);
-						totalNoise += noises[i][node];
+						addFakeRequests(blockIds[i], oramBlockNumbers[i], (QUERY_SECOND ? noises2 : noises)[i][node]);
+						totalNoise += (QUERY_SECOND ? noises2 : noises)[i][node];
 					}
 				}
 			}
@@ -997,7 +1186,7 @@ int main(int argc, char* argv[])
 			else
 			{
 				vector<bytes> result;
-				tree->search(query.first, query.second, result);
+				(QUERY_SECOND ? tree2 : tree)->search(query.first, query.second, result);
 				realRecordsNumber = result.size();
 			}
 
