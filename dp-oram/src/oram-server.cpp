@@ -28,7 +28,7 @@ number ingress, egress;
 using queryReturnType = tuple<vector<bytes>, chrono::steady_clock::rep, number>;
 
 void setOram(number oramNumber, string redisHost, vector<pair<number, bytes>> indices, number logCapacity, number blockSize, number z);
-vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, pair<number, number> query);
+vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, pair<number, number> query, bool twoAttributes, bool firstAttribute);
 pair<number, number> reset();
 
 int main(int argc, char* argv[])
@@ -73,11 +73,11 @@ pair<number, number> reset()
 	return {rIngress, rEgress};
 }
 
-vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, pair<number, number> query)
+vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, pair<number, number> query, bool twoAttributes, bool firstAttribute)
 {
-	cout << "runQuery: " << blockIds.size() << " sets, query={" << numberToSalary(query.first) << ", " << numberToSalary(query.second) << "}" << endl;
+	cout << "runQuery: " << blockIds.size() << " sets, query={" << numberToSalary(query.first) << ", " << numberToSalary(query.second) << "}, firstAttribute: " << firstAttribute << endl;
 
-	auto queryOram = [](const vector<number>& ids, shared_ptr<PathORAM::ORAM> oram, number from, number to, promise<queryReturnType>* promise) -> void {
+	auto queryOram = [](const vector<number>& ids, shared_ptr<PathORAM::ORAM> oram, number from, number to, bool twoAttributes, bool firstAttribute, promise<queryReturnType>* promise) -> void {
 		vector<bytes> answer;
 		vector<bytes> realRecords;
 
@@ -102,8 +102,17 @@ vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, 
 					oram->get(id, record);
 					auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
 
-					auto salary = salaryToNumber(text);
-					// TODO
+					number salary;
+					if (twoAttributes)
+					{
+						vector<string> salaries;
+						boost::algorithm::split(salaries, text, boost::is_any_of(","));
+						salary = salaryToNumber(salaries[firstAttribute ? 0 : 1]);
+					}
+					else
+					{
+						salary = salaryToNumber(text);
+					}
 
 					if (salary >= from && salary <= to)
 					{
@@ -118,7 +127,17 @@ vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, 
 				{
 					auto text = PathORAM::toText(record, ORAM_BLOCK_SIZE);
 
-					auto salary = salaryToNumber(text);
+					number salary;
+					if (twoAttributes)
+					{
+						vector<string> salaries;
+						boost::algorithm::split(salaries, text, boost::is_any_of(","));
+						salary = salaryToNumber(salaries[firstAttribute ? 0 : 1]);
+					}
+					else
+					{
+						salary = salaryToNumber(text);
+					}
 
 					if (salary >= from && salary <= to)
 					{
@@ -148,7 +167,7 @@ vector<queryReturnType> runQuery(vector<pair<number, vector<number>>> blockIds, 
 		{
 			if (blockIdsSet.first == orams[i].first)
 			{
-				threads[i] = thread(queryOram, blockIdsSet.second, orams[i].second, query.first, query.second, &promises[i]);
+				threads[i] = thread(queryOram, blockIdsSet.second, orams[i].second, query.first, query.second, twoAttributes, firstAttribute, &promises[i]);
 				break;
 			}
 		}

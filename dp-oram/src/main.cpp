@@ -885,8 +885,8 @@ int main(int argc, char* argv[])
 		using queryReturnType = tuple<number, chrono::steady_clock::rep, number>;
 		using rpcReturnType	  = vector<tuple<vector<bytes>, chrono::steady_clock::rep, number>>;
 
-		auto queryRpc = [&rpcClients](number rpcClientId, const vector<pair<number, vector<number>>>& ids, pair<number, number> query, promise<rpcReturnType>* promise) -> void {
-			auto result = rpcClients[rpcClientId]->call("runQuery", ids, query).as<rpcReturnType>();
+		auto queryRpc = [&rpcClients](number rpcClientId, const vector<pair<number, vector<number>>>& ids, pair<number, number> query, bool firstAttribute, promise<rpcReturnType>* promise) -> void {
+			auto result = rpcClients[rpcClientId]->call("runQuery", ids, query, TWO_ATTRIBUTES, firstAttribute).as<rpcReturnType>();
 			promise->set_value(result);
 		};
 
@@ -1093,7 +1093,7 @@ int main(int argc, char* argv[])
 						}
 
 						futures[rpcHostId] = promises[rpcHostId].get_future();
-						threads[rpcHostId] = thread(queryRpc, rpcHostId, ids, query, &promises[rpcHostId]);
+						threads[rpcHostId] = thread(queryRpc, rpcHostId, ids, query, firstAttribute, &promises[rpcHostId]);
 					}
 
 					for (auto i = 0uLL; i < RPC_HOSTS.size(); i++)
