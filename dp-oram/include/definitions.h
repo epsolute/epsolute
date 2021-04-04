@@ -90,24 +90,46 @@ namespace DPORAM
 		string msg_;
 	};
 
-	enum LOG_LEVEL
-	{
-		ALL,
-		TRACE,
-		DEBUG,
-		INFO,
-		WARNING,
-		ERROR,
-		CRITICAL
-	};
-	inline vector<wstring> logLevelStrings = {
-		L"ALL",
-		L"TRACE",
-		L"DEBUG",
-		L"INFO",
-		L"WARNING",
-		L"ERROR",
-		L"CRITICAL"};
+#define COMMA ,
+#define PROGRAM_OPTIONS_ENUM(ENUM_TYPE, enums, strings)                                                                                          \
+	enum ENUM_TYPE                                                                                                                               \
+	{                                                                                                                                            \
+		enums                                                                                                                                    \
+	};                                                                                                                                           \
+                                                                                                                                                 \
+	inline vector<wstring> ENUM_TYPE##_strings = {                                                                                               \
+		strings};                                                                                                                                \
+                                                                                                                                                 \
+	inline std::istream&                                                                                                                         \
+	operator>>(std::istream& in, ENUM_TYPE& backend)                                                                                             \
+	{                                                                                                                                            \
+		string token;                                                                                                                            \
+		in >> token;                                                                                                                             \
+                                                                                                                                                 \
+		wstring_convert<codecvt_utf8_utf16<wchar_t>> converter;                                                                                  \
+		auto wtoken = converter.from_bytes(boost::to_upper_copy(token));                                                                         \
+                                                                                                                                                 \
+		vector<wstring> upper;                                                                                                                   \
+		upper.resize(ENUM_TYPE##_strings.size());                                                                                                \
+		transform(ENUM_TYPE##_strings.begin(), ENUM_TYPE##_strings.end(), upper.begin(), [](wstring val) { return boost::to_upper_copy(val); }); \
+                                                                                                                                                 \
+		auto index = find(upper.begin(), upper.end(), wtoken);                                                                                   \
+		if (index == upper.end())                                                                                                                \
+		{                                                                                                                                        \
+			in.setstate(ios_base::failbit);                                                                                                      \
+		}                                                                                                                                        \
+		else                                                                                                                                     \
+		{                                                                                                                                        \
+			backend = (ENUM_TYPE)distance(upper.begin(), index);                                                                                 \
+		}                                                                                                                                        \
+                                                                                                                                                 \
+		return in;                                                                                                                               \
+	}
+
+	PROGRAM_OPTIONS_ENUM(
+		LOG_LEVEL,
+		ALL COMMA TRACE COMMA DEBUG COMMA INFO COMMA WARNING COMMA ERROR COMMA CRITICAL,
+		L"ALL" COMMA L"TRACE" COMMA L"DEBUG" COMMA L"INFO" COMMA L"WARNING" COMMA L"ERROR" COMMA L"CRITICAL")
 
 	inline vector<wstring> logLevelColors = {
 		BOLDWHITE,
@@ -118,65 +140,15 @@ namespace DPORAM
 		RED,
 		BOLDRED};
 
-	inline std::istream&
-	operator>>(std::istream& in, LOG_LEVEL& level)
-	{
-		string token;
-		in >> token;
-
-		wstring_convert<codecvt_utf8_utf16<wchar_t>> converter;
-		auto wtoken = converter.from_bytes(boost::to_upper_copy(token));
-
-		auto index = find(logLevelStrings.begin(), logLevelStrings.end(), wtoken);
-		if (index == logLevelStrings.end())
-		{
-			in.setstate(ios_base::failbit);
-		}
-		else
-		{
-			level = (LOG_LEVEL)distance(logLevelStrings.begin(), index);
-		}
-
-		return in;
-	}
-
 	inline LOG_LEVEL __logLevel;
 
-	enum ORAM_BACKEND
-	{
-		InMemory,
-		FileSystem,
-		Redis
-	};
+	PROGRAM_OPTIONS_ENUM(
+		QUERY_MULTIPLE_T,
+		QFirst COMMA QSecond COMMA QMultiple,
+		L"First" COMMA L"Second" COMMA L"Multiple")
 
-	inline vector<wstring> oramBackendStrings = {
-		L"InMemory",
-		L"FileSystem",
-		L"Redis"};
-
-	inline std::istream&
-	operator>>(std::istream& in, ORAM_BACKEND& backend)
-	{
-		string token;
-		in >> token;
-
-		wstring_convert<codecvt_utf8_utf16<wchar_t>> converter;
-		auto wtoken = converter.from_bytes(boost::to_upper_copy(token));
-
-		vector<wstring> upper;
-		upper.resize(oramBackendStrings.size());
-		transform(oramBackendStrings.begin(), oramBackendStrings.end(), upper.begin(), [](wstring val) { return boost::to_upper_copy(val); });
-
-		auto index = find(upper.begin(), upper.end(), wtoken);
-		if (index == upper.end())
-		{
-			in.setstate(ios_base::failbit);
-		}
-		else
-		{
-			backend = (ORAM_BACKEND)distance(upper.begin(), index);
-		}
-
-		return in;
-	}
+	PROGRAM_OPTIONS_ENUM(
+		ORAM_BACKEND,
+		InMemory COMMA FileSystem COMMA Redis,
+		L"InMemory" COMMA L"FileSystem" COMMA L"Redis")
 }

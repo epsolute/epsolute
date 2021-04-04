@@ -107,7 +107,7 @@ auto REDIS_FLUSH_ALL = false;
 auto POINT_QUERIES = false;
 
 auto TWO_ATTRIBUTES = false;
-auto QUERY_SECOND	= false;
+QUERY_MULTIPLE_T QUERY_MULTIPLE	= QFirst;
 
 auto PARALLEL_RPC_LOAD = 100uLL;
 
@@ -193,7 +193,7 @@ int main(int argc, char* argv[])
 	desc.add_options()("redis", po::value<vector<string>>(&REDIS_HOSTS)->multitoken()->composing(), "Redis host(s) to use. If multiple specified, will distribute uniformly. Default tcp://127.0.0.1:6379 .");
 	desc.add_options()("seed", po::value<int>(&SEED)->default_value(SEED), "To use if in DEBUG mode (otherwise OpenSSL will sample fresh randomness)");
 	desc.add_options()("two-attributes", po::value<bool>(&TWO_ATTRIBUTES)->default_value(TWO_ATTRIBUTES), "if set, will run two attributes queries");
-	desc.add_options()("query-second", po::value<bool>(&QUERY_SECOND)->default_value(QUERY_SECOND), "if set, will run the queries against the second attribute");
+	desc.add_options()("query-multiple", po::value<QUERY_MULTIPLE_T>(&QUERY_MULTIPLE)->default_value(QUERY_MULTIPLE), "if set, will run the queries against the second attribute");
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -283,10 +283,10 @@ int main(int argc, char* argv[])
 		USE_ORAMS = true;
 	}
 
-	if (!TWO_ATTRIBUTES && QUERY_SECOND)
+	if (!TWO_ATTRIBUTES && QUERY_MULTIPLE != QFirst)
 	{
 		LOG(WARNING, L"Cannot have QUERY_SECOND without TWO_ATTRIBUTES.");
-		QUERY_SECOND = false;
+		QUERY_MULTIPLE = QFirst;
 	}
 
 	if (REDIS_HOSTS.size() == 0)
@@ -521,7 +521,7 @@ int main(int argc, char* argv[])
 	LOG_PARAMETER(VIRTUAL_REQUESTS);
 	LOG_PARAMETER(BATCH_SIZE);
 	LOG_PARAMETER(TWO_ATTRIBUTES);
-	LOG_PARAMETER(QUERY_SECOND);
+	LOG_PARAMETER(QUERY_MULTIPLE);
 	LOG_PARAMETER(SEED);
 	LOG_PARAMETER(DP_K);
 	LOG_PARAMETER(DP_BETA);
@@ -531,7 +531,7 @@ int main(int argc, char* argv[])
 	LOG(INFO, boost::wformat(L"DATASET_TAG = %1%") % toWString(DATASET_TAG));
 	LOG(INFO, boost::wformat(L"QUERYSET_TAG = %1%") % toWString(QUERYSET_TAG));
 
-	LOG(INFO, boost::wformat(L"ORAM_BACKEND = %1%") % oramBackendStrings[ORAM_STORAGE]);
+	LOG(INFO, boost::wformat(L"ORAM_BACKEND = %1%") % ORAM_BACKEND_strings[ORAM_STORAGE]);
 	if (REDIS_HOSTS.size() <= 4)
 	{
 		for (auto&& redisHost : REDIS_HOSTS)
@@ -920,7 +920,7 @@ int main(int argc, char* argv[])
 						{
 							vector<string> salaries;
 							boost::algorithm::split(salaries, text, boost::is_any_of(","));
-							salary = salaryToNumber(salaries[QUERY_SECOND ? 1 : 0]);
+							salary = salaryToNumber(salaries[QUERY_MULTIPLE == QSecond ? 1 : 0]);
 						}
 						else
 						{
@@ -946,7 +946,7 @@ int main(int argc, char* argv[])
 					{
 						vector<string> salaries;
 						boost::algorithm::split(salaries, text, boost::is_any_of(","));
-						salary = salaryToNumber(salaries[QUERY_SECOND ? 1 : 0]);
+						salary = salaryToNumber(salaries[QUERY_MULTIPLE == QSecond ? 1 : 0]);
 					}
 					else
 					{
@@ -986,23 +986,23 @@ int main(int argc, char* argv[])
 			// DP padding
 			auto [fromBucket, toBucket, from, to] = padToBuckets(
 				query,
-				QUERY_SECOND ? MIN_VALUE2 : MIN_VALUE,
-				QUERY_SECOND ? MAX_VALUE2 : MAX_VALUE,
-				QUERY_SECOND ? DP_BUCKETS2 : DP_BUCKETS);
+				QUERY_MULTIPLE == QSecond ? MIN_VALUE2 : MIN_VALUE,
+				QUERY_MULTIPLE == QSecond ? MAX_VALUE2 : MAX_VALUE,
+				QUERY_MULTIPLE == QSecond ? DP_BUCKETS2 : DP_BUCKETS);
 
-			if (from < (QUERY_SECOND ? MIN_VALUE2 : MIN_VALUE) || to > (QUERY_SECOND ? MAX_VALUE2 : MAX_VALUE))
+			if (from < (QUERY_MULTIPLE == QSecond ? MIN_VALUE2 : MIN_VALUE) || to > (QUERY_MULTIPLE == QSecond ? MAX_VALUE2 : MAX_VALUE))
 			{
 				LOG(ERROR, L"Query endpoints are out of bounds, did you use correct queryset tag?");
 			}
 
 			vector<bytes> oramsAndBlocks;
-			(QUERY_SECOND ? tree2 : tree)->search(from, to, oramsAndBlocks);
+			(QUERY_MULTIPLE == QSecond ? tree2 : tree)->search(from, to, oramsAndBlocks);
 
 			// DP add noise
 			auto noiseNodes = BRC(DP_K, fromBucket, toBucket);
 			for (auto node : noiseNodes)
 			{
-				if (node.first >= (QUERY_SECOND ? DP_LEVELS2 : DP_LEVELS))
+				if (node.first >= (QUERY_MULTIPLE == QSecond ? DP_LEVELS2 : DP_LEVELS))
 				{
 					LOG(CRITICAL, boost::wformat(L"DP tree is not high enough. Level %1% is not generated. Buckets [%2%, %3%], endpoints (%4%, %5%).") % node.first % fromBucket % toBucket % numberToSalary(from) % numberToSalary(to));
 				}
@@ -1026,7 +1026,7 @@ int main(int argc, char* argv[])
 				auto kZeroTilda = oramsAndBlocks.size();
 				for (auto node : noiseNodes)
 				{
-					kZeroTilda += (QUERY_SECOND ? noises2 : noises)[0][node];
+					kZeroTilda += (QUERY_MULTIPLE == QSecond ? noises2 : noises)[0][node];
 				}
 				if (kZeroTilda == 0)
 				{
@@ -1049,8 +1049,8 @@ int main(int argc, char* argv[])
 				{
 					for (auto node : noiseNodes)
 					{
-						addFakeRequests(blockIds[i], oramBlockNumbers[i], (QUERY_SECOND ? noises2 : noises)[i][node]);
-						totalNoise += (QUERY_SECOND ? noises2 : noises)[i][node];
+						addFakeRequests(blockIds[i], oramBlockNumbers[i], (QUERY_MULTIPLE == QSecond ? noises2 : noises)[i][node]);
+						totalNoise += (QUERY_MULTIPLE == QSecond ? noises2 : noises)[i][node];
 					}
 				}
 			}
@@ -1186,7 +1186,7 @@ int main(int argc, char* argv[])
 			else
 			{
 				vector<bytes> result;
-				(QUERY_SECOND ? tree2 : tree)->search(query.first, query.second, result);
+				(QUERY_MULTIPLE == QSecond ? tree2 : tree)->search(query.first, query.second, result);
 				realRecordsNumber = result.size();
 			}
 
@@ -1438,7 +1438,7 @@ int main(int argc, char* argv[])
 	PUT_PARAMETER(DP_EPSILON);
 	PUT_PARAMETER(DP_USE_GAMMA);
 
-	root.put("ORAM_BACKEND", converter.to_bytes(oramBackendStrings[ORAM_STORAGE]));
+	root.put("ORAM_BACKEND", converter.to_bytes(ORAM_BACKEND_strings[ORAM_STORAGE]));
 	for (auto&& redisHost : REDIS_HOSTS)
 	{
 		PUT_PARAMETER(redisHost);
@@ -1690,20 +1690,20 @@ void LOG(LOG_LEVEL level, wstring message)
 	if (level >= __logLevel)
 	{
 		auto t = time(nullptr);
-		wcout << L"[" << put_time(localtime(&t), L"%d/%m/%Y %H:%M:%S") << L"] " << setw(10) << logLevelColors[level] << logLevelStrings[level] << L": " << message << RESET << endl;
+		wcout << L"[" << put_time(localtime(&t), L"%d/%m/%Y %H:%M:%S") << L"] " << setw(10) << logLevelColors[level] << LOG_LEVEL_strings[level] << L": " << message << RESET << endl;
 
 		if (DUMP_TO_MATTERMOST)
 		{
 			stringstream ss;
 			wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-			ss << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(10) << converter.to_bytes(logLevelStrings[level]) << ": " << converter.to_bytes(message);
+			ss << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(10) << converter.to_bytes(LOG_LEVEL_strings[level]) << ": " << converter.to_bytes(message);
 			logLines.push_back(ss.str());
 		}
 
 		if (FILE_LOGGING || DUMP_TO_MATTERMOST)
 		{
 			wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-			logFile << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(10) << converter.to_bytes(logLevelStrings[level]) << ": " << converter.to_bytes(message) << endl;
+			logFile << "[" << put_time(localtime(&t), "%d/%m/%Y %H:%M:%S") << "] " << setw(10) << converter.to_bytes(LOG_LEVEL_strings[level]) << ": " << converter.to_bytes(message) << endl;
 		}
 	}
 	if (level == CRITICAL)
