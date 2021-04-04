@@ -106,8 +106,8 @@ auto REDIS_FLUSH_ALL = false;
 
 auto POINT_QUERIES = false;
 
-auto TWO_ATTRIBUTES = false;
-QUERY_MULTIPLE_T QUERY_MULTIPLE	= QFirst;
+auto TWO_ATTRIBUTES				= false;
+QUERY_MULTIPLE_T QUERY_MULTIPLE = QFirst;
 
 auto PARALLEL_RPC_LOAD = 100uLL;
 
@@ -285,7 +285,7 @@ int main(int argc, char* argv[])
 
 	if (!TWO_ATTRIBUTES && QUERY_MULTIPLE != QFirst)
 	{
-		LOG(WARNING, L"Cannot have QUERY_SECOND without TWO_ATTRIBUTES.");
+		LOG(WARNING, L"Cannot have QUERY_MULTIPLE not QFirst without TWO_ATTRIBUTES.");
 		QUERY_MULTIPLE = QFirst;
 	}
 
@@ -890,7 +890,7 @@ int main(int argc, char* argv[])
 			promise->set_value(result);
 		};
 
-		auto queryOram = [](const vector<number>& ids, shared_ptr<PathORAM::ORAM> oram, number from, number to, promise<queryReturnType>* promise) -> queryReturnType {
+		auto queryOram = [](const vector<number>& ids, shared_ptr<PathORAM::ORAM> oram, number from, number to, bool firstAttribute, promise<queryReturnType>* promise) -> queryReturnType {
 			vector<bytes> answer;
 			number count = 0;
 
@@ -920,7 +920,7 @@ int main(int argc, char* argv[])
 						{
 							vector<string> salaries;
 							boost::algorithm::split(salaries, text, boost::is_any_of(","));
-							salary = salaryToNumber(salaries[QUERY_MULTIPLE == QSecond ? 1 : 0]);
+							salary = salaryToNumber(salaries[firstAttribute ? 0 : 1]);
 						}
 						else
 						{
@@ -946,7 +946,7 @@ int main(int argc, char* argv[])
 					{
 						vector<string> salaries;
 						boost::algorithm::split(salaries, text, boost::is_any_of(","));
-						salary = salaryToNumber(salaries[QUERY_MULTIPLE == QSecond ? 1 : 0]);
+						salary = salaryToNumber(salaries[firstAttribute ? 0 : 1]);
 					}
 					else
 					{
@@ -972,6 +972,8 @@ int main(int argc, char* argv[])
 
 		for (auto query : queries)
 		{
+			auto firstAttribute = QUERY_MULTIPLE == QMultiple ? (queryIndex % 2) : (QUERY_MULTIPLE == QFirst);
+
 			auto start = chrono::steady_clock::now();
 
 			if (PROFILE_STORAGE_REQUESTS)
@@ -986,23 +988,23 @@ int main(int argc, char* argv[])
 			// DP padding
 			auto [fromBucket, toBucket, from, to] = padToBuckets(
 				query,
-				QUERY_MULTIPLE == QSecond ? MIN_VALUE2 : MIN_VALUE,
-				QUERY_MULTIPLE == QSecond ? MAX_VALUE2 : MAX_VALUE,
-				QUERY_MULTIPLE == QSecond ? DP_BUCKETS2 : DP_BUCKETS);
+				firstAttribute ? MIN_VALUE : MIN_VALUE2,
+				firstAttribute ? MAX_VALUE : MAX_VALUE2,
+				firstAttribute ? DP_BUCKETS : DP_BUCKETS2);
 
-			if (from < (QUERY_MULTIPLE == QSecond ? MIN_VALUE2 : MIN_VALUE) || to > (QUERY_MULTIPLE == QSecond ? MAX_VALUE2 : MAX_VALUE))
+			if (from < (firstAttribute ? MIN_VALUE : MIN_VALUE2) || to > (firstAttribute ? MAX_VALUE : MAX_VALUE2))
 			{
 				LOG(ERROR, L"Query endpoints are out of bounds, did you use correct queryset tag?");
 			}
 
 			vector<bytes> oramsAndBlocks;
-			(QUERY_MULTIPLE == QSecond ? tree2 : tree)->search(from, to, oramsAndBlocks);
+			(firstAttribute ? tree : tree2)->search(from, to, oramsAndBlocks);
 
 			// DP add noise
 			auto noiseNodes = BRC(DP_K, fromBucket, toBucket);
 			for (auto node : noiseNodes)
 			{
-				if (node.first >= (QUERY_MULTIPLE == QSecond ? DP_LEVELS2 : DP_LEVELS))
+				if (node.first >= (firstAttribute ? DP_LEVELS : DP_LEVELS2))
 				{
 					LOG(CRITICAL, boost::wformat(L"DP tree is not high enough. Level %1% is not generated. Buckets [%2%, %3%], endpoints (%4%, %5%).") % node.first % fromBucket % toBucket % numberToSalary(from) % numberToSalary(to));
 				}
@@ -1026,7 +1028,7 @@ int main(int argc, char* argv[])
 				auto kZeroTilda = oramsAndBlocks.size();
 				for (auto node : noiseNodes)
 				{
-					kZeroTilda += (QUERY_MULTIPLE == QSecond ? noises2 : noises)[0][node];
+					kZeroTilda += (firstAttribute ? noises : noises2)[0][node];
 				}
 				if (kZeroTilda == 0)
 				{
@@ -1049,8 +1051,8 @@ int main(int argc, char* argv[])
 				{
 					for (auto node : noiseNodes)
 					{
-						addFakeRequests(blockIds[i], oramBlockNumbers[i], (QUERY_MULTIPLE == QSecond ? noises2 : noises)[i][node]);
-						totalNoise += (QUERY_MULTIPLE == QSecond ? noises2 : noises)[i][node];
+						addFakeRequests(blockIds[i], oramBlockNumbers[i], (firstAttribute ? noises : noises2)[i][node]);
+						totalNoise += (firstAttribute ? noises : noises2)[i][node];
 					}
 				}
 			}
@@ -1119,7 +1121,7 @@ int main(int argc, char* argv[])
 					for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 					{
 						futures[i] = promises[i].get_future();
-						threads[i] = thread(queryOram, blockIds[i], orams[i], query.first, query.second, &promises[i]);
+						threads[i] = thread(queryOram, blockIds[i], orams[i], query.first, query.second, firstAttribute, &promises[i]);
 					}
 
 					for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
@@ -1139,7 +1141,7 @@ int main(int argc, char* argv[])
 
 					for (auto i = 0uLL; i < ORAMS_NUMBER; i++)
 					{
-						auto returned = queryOram(blockIds[i], orams[i], query.first, query.second, NULL);
+						auto returned = queryOram(blockIds[i], orams[i], query.first, query.second, firstAttribute, NULL);
 						realRecordsNumber += get<0>(returned);
 						threadOverheads.push_back(get<1>(returned));
 						threadAnswerSizes.push_back(get<2>(returned));
@@ -1186,7 +1188,7 @@ int main(int argc, char* argv[])
 			else
 			{
 				vector<bytes> result;
-				(QUERY_MULTIPLE == QSecond ? tree2 : tree)->search(query.first, query.second, result);
+				(firstAttribute ? tree : tree2)->search(query.first, query.second, result);
 				realRecordsNumber = result.size();
 			}
 
