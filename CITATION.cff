@@ -1,0 +1,31 @@
+# YAML 1.2
+---
+authors:
+  -
+    affiliation: "Boston University"
+    family-names: Bogatov
+    given-names: Dmytro
+    orcid: "https://orcid.org/0000-0002-9357-8834"
+  -
+    family-names: Kellaris
+    given-names: Georgios
+  -
+    affiliation: "Boston University"
+    family-names: Kollios
+    given-names: George
+  -
+    affiliation: "Georgetown University"
+    family-names: Nissim
+    given-names: Kobbi
+  -
+    affiliation: "University of Massachusetts, Amherst"
+    family-names: "O'Neil"
+    given-names: Adam
+cff-version: "1.1.0"
+date-released: 2021-10-01
+doi: "10.1145/3460120.3484786"
+license: "CC-BY-NC-4.0"
+message: "If you use this software, please cite it using these metadata."
+repository-code: "https://github.com/epsolute/epsolute"
+title: "Epsolute: Efficiently Querying Databases While Providing Differential Privacy"
+version: "1.0"
