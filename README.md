@@ -37,10 +37,10 @@ cd ~
 ssh-keygen
 cat ~/.ssh/id_rsa.pub
 
-git clone git@git.dbogatov.org:bu/dp-oram/dp-oram.git
-git clone git@git.dbogatov.org:bu/dp-oram/path-oram.git
-git clone git@git.dbogatov.org:bu/dp-oram/b-plus-tree.git
-git clone git@git.dbogatov.org:bu/dp-oram/experiments-scripts.git
+git clone https://git.dbogatov.org/bu/epsolute/epsolute.git
+git clone https://git.dbogatov.org/bu/epsolute/path-oram.git
+git clone https://git.dbogatov.org/bu/epsolute/b-plus-tree.git
+git clone https://git.dbogatov.org/bu/epsolute/experiments-scripts.git
 
 cd ~/path-oram/path-oram
 make clean && make shared CPPFLAGS="-DUSE_AEROSPIKE=false" -j8
@@ -57,7 +57,7 @@ To install ORAM service
 ```sh
 cd experiments-scripts/configs/
 git pull
-sudo ln -s /home/dmytro/experiments-scripts/configs/oram.service /lib/systemd/system/oram.service
+sudo ln -s /home/$(whoami)/experiments-scripts/configs/oram.service /lib/systemd/system/oram.service
 sudo systemctl enable oram.service
 sudo systemctl start oram.service
 sudo systemctl status oram.service
@@ -85,7 +85,7 @@ sudo make ldconfig
 make server
 cd ~/experiments-scripts/configs/
 git pull
-sudo ln -s /home/dmytro/experiments-scripts/configs/oram.service /lib/systemd/system/oram.service
+sudo ln -s /home/$(whoami)/experiments-scripts/configs/oram.service /lib/systemd/system/oram.service
 sudo systemctl enable oram.service
 sudo systemctl start oram.service
 sudo systemctl status oram.service
