@@ -37,10 +37,10 @@ cd ~
 ssh-keygen
 cat ~/.ssh/id_rsa.pub
 
-git clone https://git.dbogatov.org/bu/epsolute/epsolute.git
-git clone https://git.dbogatov.org/bu/epsolute/path-oram.git
-git clone https://git.dbogatov.org/bu/epsolute/b-plus-tree.git
-git clone https://git.dbogatov.org/bu/epsolute/experiments-scripts.git
+git clone https://github.com/epsolute/epsolute.git
+git clone https://github.com/epsolute/path-oram.git
+git clone https://github.com/epsolute/b-plus-tree.git
+git clone https://github.com/epsolute/experiments-scripts.git
 
 cd ~/path-oram/path-oram
 make clean && make shared CPPFLAGS="-DUSE_AEROSPIKE=false" -j8
