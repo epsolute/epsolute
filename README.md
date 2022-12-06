@@ -1,6 +1,7 @@
 # Epsolute: how to reproduce on Azure
 
-In this instructions we will create an Epsolute cluster in a region consisting of one client, two (or more) ORAM servers and two (or more) Redis servers.
+In these instructions we will create an Epsolute cluster in a signle region consisting of one client, two (or more) ORAM servers and two (or more) Redis servers.
+We will download a dataset and run the queries on it.
 
 To follow the instruction, make sure you can create enough VMs in your Azure subscription (request a quota increase if necessary).
 
@@ -12,12 +13,12 @@ The client machine is trusted and has the dataset to store.
 
 1. Go to "Create a virtual machine"
 1. Let the name be `client`
-1. Set the image to `Ubuntu Server 20.04 LTS Gen2` (this important, the scripts expect this image)
+1. Set the image to `Ubuntu Server 20.04 LTS Gen2` (this is important, the scripts expect this image)
 1. VM architecture: `x64`
 1. Size `Standard_D4s_v3` (others may work, you can try yourself)
-1. Authentication type choose the one ypu like (SSH is generally preferred)
+1. Authentication type choose the one you like (SSH is generally preferred)
 1. Click "Next: Disks"
-1. OS disk type: `Standard SSD`
+1. OS disk type: `Standard SSD` (cheaper this way)
 1. Click "Next: Networking"
 1. Virtual Network set to the same network for this and all other VMs
 1. Click "Review + create" and "create"
@@ -92,7 +93,7 @@ If you've got a log of queries and success exit code, you're good to go!
 First, follow "Provision the VM" from the "Deploy Epsolute client", except set name to `redis-1`.
 Remember to use the same virtual network as for `client`.
 
-We are going to open up to 8 Redis ports for use by client, and by default Azure keeps them closed.
+We are going to open 8 Redis ports for use by client, and by default Azure keeps them closed.
 So when you are viewing the `redis-1` VM page, go to "Networking" and click "Add inbound rule".
 Leave source as "Any" (although for production, better to specify `client`'s IP) and put `6380-6387` in the "Destination port ranges".
 Click "Add".
@@ -128,7 +129,7 @@ sudo systemctl enable redis-server-638{0,1,2,3}.service
 # start the services
 sudo systemctl start redis-server-638{0,1,2,3}.service
 
-# check status of one fo them (sanity check)
+# check status of one of them (sanity check)
 sudo systemctl status redis-server-6380.service
 ```
 
@@ -136,7 +137,7 @@ Now, repeat the above steps for the second Redis VM, named `redis-2`.
 
 ## Test Epsolute with Redis
 
-Now let's run an Epsolute Query against the Redis servers.
+Now let's run an Epsolute query against the Redis servers.
 
 On the `client` VM, runt he following:
 
@@ -220,6 +221,7 @@ Here is the expected output:
 
 <details>
 	<summary>Toggle to see</summary>
+
 ```sh
 ./bin/main -s redis -n 8 -v trace --dumpToMattermost false --dataset dataset-CA-100000 --queryset queries-CA-100000-1.0-uniform --rpcHost oram-{1,2} --redis tcp://redis-{1,2}:638{0,1}
 [06/12/2022 16:05:29]      INFO: Generating indices...
@@ -342,10 +344,10 @@ Here is the expected output:
 </details>
 
 The number after `CA-` is the dataset size in records.
-Feel free to try larger sets on more powerful setup.
+Feel free to try larger sets on more powerful setup (choices are 100K, 1M and 10M).
 The 1M records set took about 9 minutes to construct and about 10 seconds per query on this setup.
 
-> Note, if you run on a larger dataset, you may want to use `--parallelRPCLoad 1` (or number that is smaller than the number of ORAMs).
+> Note, if you run on a larger dataset, you may want to use `--parallelRPCLoad 1` (or a number that is smaller than the number of ORAMs).
 > This instructs the client to upload the data to ORAMs this many at a time.
 > This is required because the `client` VM in this setup is small and has little memory.
 > If we don't restrict upload parallelism here, it will OOM.
@@ -361,6 +363,7 @@ Here is the list of issues I think can arise:
   - check that ports are open for inbound traffic on the VMs
   - check that the VMs are running
   - check that the receiving process on the VM is running and is listening to the port (`sudo netstat -tupln` may help)
+    - especially `oram-server` process (it fails if tried to connect to non-existing Redis)
   - check that the hostname resolves (i.e., `ping redis-1`), if not, use **internal** IP
   - use `tcp://` prefix when connecting directly Redis
   - check that VMs are on the same internal network
